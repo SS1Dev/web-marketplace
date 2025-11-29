@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -26,8 +26,8 @@ export function CheckoutForm({ product, userId }: CheckoutFormProps) {
 	const total = product.price * quantity
 
 	const handleCheckout = async () => {
-		// Check stock only for non-key products
-		if (product.type !== 'key' && quantity > product.stock) {
+		// Check stock only for non-key and non-script products
+		if (product.type !== 'key' && product.type !== 'script' && quantity > product.stock) {
 			toast({
 				title: 'Error',
 				description: 'Not enough stock available',
@@ -70,32 +70,48 @@ export function CheckoutForm({ product, userId }: CheckoutFormProps) {
 	}
 
 	return (
-		<div className="mx-auto max-w-2xl">
-			<Card>
+		<div className="mx-auto max-w-md">
+			<Card className="flex flex-col hover:shadow-lg transition-shadow">
+				{product.image && (
+					<div className="relative h-48 w-full overflow-hidden rounded-t-lg">
+						<Image
+							src={product.image}
+							alt={product.name}
+							fill
+							className="object-cover"
+							unoptimized
+						/>
+					</div>
+				)}
 				<CardHeader>
-					<CardTitle>Checkout</CardTitle>
-					<CardDescription>Review your order</CardDescription>
+					<CardTitle className="line-clamp-2">{product.name}</CardTitle>
+					<CardDescription className="line-clamp-2">
+						{product.description || 'No description'}
+					</CardDescription>
 				</CardHeader>
-				<CardContent className="space-y-6">
-					{product.image && (
-						<div className="relative h-64 w-full overflow-hidden rounded-lg">
-							<Image
-								src={product.image}
-								alt={product.name}
-								fill
-								className="object-cover"
-								unoptimized
-							/>
+				<CardContent className="flex-1 space-y-4">
+					<div className="space-y-2">
+						<div className="text-2xl font-bold text-primary">
+							{formatCurrency(product.price)}
 						</div>
-					)}
-					<div>
-						<h3 className="text-lg font-semibold">{product.name}</h3>
-						<p className="text-sm text-muted-foreground">
-							{product.description}
-						</p>
+						{product.type !== 'key' && product.type !== 'script' && (
+							<div className="text-sm text-muted-foreground">
+								Stock: {product.stock}
+							</div>
+						)}
+						{product.type === 'key' && product.expireDays && (
+							<div className="text-sm text-muted-foreground">
+								Expires: {product.expireDays === 'Never' ? 'Never' : product.expireDays}
+							</div>
+						)}
+						{product.category && (
+							<div className="text-xs text-muted-foreground">
+								Category: {product.category}
+							</div>
+						)}
 					</div>
 
-					{product.type !== 'key' && (
+					{product.type !== 'key' && product.type !== 'script' && (
 						<div className="space-y-2">
 							<Label htmlFor="quantity">Quantity</Label>
 							<Input
@@ -112,28 +128,40 @@ export function CheckoutForm({ product, userId }: CheckoutFormProps) {
 						</div>
 					)}
 
+					{(product.type === 'key' || product.type === 'script') && (
+						<div className="space-y-2 border-t pt-4">
+							<div className="flex justify-between text-sm">
+								<span className="text-muted-foreground">Quantity:</span>
+								<span>{quantity}</span>
+							</div>
+						</div>
+					)}
+
 					<div className="space-y-2 border-t pt-4">
-						<div className="flex justify-between">
+						<div className="flex justify-between text-sm">
 							<span className="text-muted-foreground">Unit Price:</span>
 							<span>{formatCurrency(product.price)}</span>
 						</div>
-						<div className="flex justify-between">
-							<span className="text-muted-foreground">Quantity:</span>
-							<span>{quantity}</span>
-						</div>
-						<div className="flex justify-between text-lg font-bold">
+						{quantity > 1 && (
+							<div className="flex justify-between text-sm">
+								<span className="text-muted-foreground">Quantity:</span>
+								<span>{quantity}</span>
+							</div>
+						)}
+						<div className="flex justify-between text-lg font-bold border-t pt-2">
 							<span>Total:</span>
 							<span className="text-primary">{formatCurrency(total)}</span>
 						</div>
 					</div>
-
+				</CardContent>
+				<CardFooter>
 					<Button
 						className="w-full"
 						onClick={handleCheckout}
 						disabled={
 							isLoading ||
 							quantity < 1 ||
-							(product.type !== 'key' && quantity > product.stock)
+							(product.type !== 'key' && product.type !== 'script' && quantity > product.stock)
 						}
 					>
 						{isLoading ? (
@@ -145,7 +173,7 @@ export function CheckoutForm({ product, userId }: CheckoutFormProps) {
 							'Proceed to Payment'
 						)}
 					</Button>
-				</CardContent>
+				</CardFooter>
 			</Card>
 		</div>
 	)

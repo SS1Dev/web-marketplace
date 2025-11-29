@@ -12,7 +12,7 @@ const updateProductSchema = z.object({
 	price: z.number().min(0).optional(),
 	stock: z.number().int().min(0).optional(),
 	category: z.string().optional(),
-	type: z.enum(['key', 'id', 'other']).optional(),
+	type: z.enum(['key', 'id', 'script', 'other']).optional(),
 	expireDays: z.string().optional().nullable(),
 	sourceCode: z.string().optional().nullable(),
 	image: z
@@ -61,7 +61,10 @@ export async function PUT(
 			// If changing to non-key type, clear expireDays
 			if (validatedData.type !== 'key') {
 				productData.expireDays = null
-				productData.sourceCode = null
+				// Only clear sourceCode if changing to a type that doesn't use it
+				if (validatedData.type !== 'script') {
+					productData.sourceCode = null
+				}
 			}
 		}
 		// Only set expireDays if explicitly provided and type is 'key'
@@ -77,15 +80,15 @@ export async function PUT(
 			// If type is being changed to non-key and expireDays is not provided, clear it
 			productData.expireDays = null
 		}
-		// Handle sourceCode similarly - only for key type
+		// Handle sourceCode similarly - for key or script type
 		if (validatedData.sourceCode !== undefined) {
 			const finalTypeForSource = validatedData.type !== undefined ? validatedData.type : currentProduct.type
-			if (finalTypeForSource === 'key') {
+			if (finalTypeForSource === 'key' || finalTypeForSource === 'script') {
 				productData.sourceCode = validatedData.sourceCode || null
 			} else {
 				productData.sourceCode = null
 			}
-		} else if (validatedData.type !== undefined && validatedData.type !== 'key') {
+		} else if (validatedData.type !== undefined && validatedData.type !== 'key' && validatedData.type !== 'script') {
 			productData.sourceCode = null
 		}
 		// If type is not being changed and expireDays is not provided, don't update it

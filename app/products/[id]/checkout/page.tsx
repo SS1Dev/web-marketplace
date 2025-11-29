@@ -24,8 +24,13 @@ export default async function CheckoutPage({
 		redirect('/products')
 	}
 
-	// Check stock only for non-key products
-	if (product.type !== 'key' && product.stock === 0) {
+	// Check stock only for non-key and non-script products
+	if (product.type !== 'key' && product.type !== 'script' && product.stock === 0) {
+		redirect('/products')
+	}
+
+	// Redirect script products with price 0 back to products (they should use Get Free button)
+	if (product.type === 'script' && product.price === 0) {
 		redirect('/products')
 	}
 

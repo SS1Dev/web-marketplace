@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import Image from 'next/image'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -13,6 +13,7 @@ import { useToast } from '@/hooks/use-toast'
 import { useRouter } from 'next/navigation'
 import type { Product } from '@prisma/client'
 import { Plus, Edit, Trash2 } from 'lucide-react'
+import { AdminProductCard } from './admin-product-card'
 
 interface ProductManagementProps {
 	products: Product[]
@@ -84,11 +85,11 @@ export function ProductManagement({ products: initialProducts }: ProductManageme
 				name: formData.name,
 				description: formData.description,
 				price: parseFloat(formData.price),
-				stock: formData.type === 'key' ? 0 : parseInt(formData.stock),
+				stock: (formData.type === 'key' || formData.type === 'script') ? 0 : parseInt(formData.stock),
 				category: formData.category,
 				type: formData.type,
 				image: formData.image || null,
-				sourceCode: formData.type === 'key' && formData.sourceCode ? formData.sourceCode : null,
+				sourceCode: (formData.type === 'key' || formData.type === 'script') && formData.sourceCode ? formData.sourceCode : null,
 				isActive: formData.isActive,
 			}
 
@@ -212,14 +213,17 @@ export function ProductManagement({ products: initialProducts }: ProductManageme
 									<SelectContent>
 										<SelectItem value="key">Key</SelectItem>
 										<SelectItem value="id">ID (Username/Password)</SelectItem>
+										<SelectItem value="script">Script</SelectItem>
 										<SelectItem value="other">Other</SelectItem>
 									</SelectContent>
 								</Select>
 							</div>
 							<div className="space-y-2">
 								<Label htmlFor="description">Description</Label>
-								<Input
+								<textarea
 									id="description"
+									className="flex min-h-[120px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+									placeholder="Enter product description"
 									value={formData.description}
 									onChange={(e) =>
 										setFormData({ ...formData, description: e.target.value })
@@ -289,6 +293,19 @@ export function ProductManagement({ products: initialProducts }: ProductManageme
 										/>
 									</div>
 								</div>
+							) : formData.type === 'script' ? (
+								<div className="space-y-2">
+									<Label htmlFor="sourceCode">Source Code</Label>
+									<textarea
+										id="sourceCode"
+										className="flex min-h-[120px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+										placeholder="Paste source code or script for this product"
+										value={formData.sourceCode}
+										onChange={(e) =>
+											setFormData({ ...formData, sourceCode: e.target.value })
+										}
+									/>
+								</div>
 							) : (
 								<>
 									<div className="space-y-2">
@@ -344,71 +361,14 @@ export function ProductManagement({ products: initialProducts }: ProductManageme
 				</Dialog>
 			</div>
 
-			<div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+			<div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
 				{products.map((product) => (
-					<Card key={product.id}>
-						{product.image && (
-							<div className="relative h-48 w-full overflow-hidden rounded-t-lg">
-								<Image
-									src={product.image}
-									alt={product.name}
-									fill
-									className="object-cover"
-									unoptimized
-								/>
-							</div>
-						)}
-						<CardHeader>
-							<CardTitle>{product.name}</CardTitle>
-							<CardDescription>{product.description}</CardDescription>
-						</CardHeader>
-						<CardContent className="space-y-4">
-							<div>
-								<p className="text-2xl font-bold text-primary">
-									{formatCurrency(product.price)}
-								</p>
-								{product.type !== 'key' && (
-									<p className="text-sm text-muted-foreground">
-										Stock: {product.stock}
-									</p>
-								)}
-								{product.type === 'key' && product.expireDays && (
-									<p className="text-sm text-muted-foreground">
-										Expires: {product.expireDays === 'Never' ? 'Never' : product.expireDays}
-									</p>
-								)}
-								{product.type !== 'key' && product.category && (
-									<p className="text-sm text-muted-foreground">
-										Category: {product.category}
-									</p>
-								)}
-								<p className="text-sm text-muted-foreground">
-									Type: {product.type === 'key' ? 'Key' : product.type === 'id' ? 'ID (User/Pass)' : 'Other'}
-								</p>
-								<p className="text-sm text-muted-foreground">
-									Status: {product.isActive ? 'Active' : 'Inactive'}
-								</p>
-							</div>
-							<div className="flex space-x-2">
-								<Button
-									variant="outline"
-									size="sm"
-									onClick={() => handleOpenDialog(product)}
-								>
-									<Edit className="mr-2 h-4 w-4" />
-									Edit
-								</Button>
-								<Button
-									variant="destructive"
-									size="sm"
-									onClick={() => handleDelete(product.id)}
-								>
-									<Trash2 className="mr-2 h-4 w-4" />
-									Delete
-								</Button>
-							</div>
-						</CardContent>
-					</Card>
+					<AdminProductCard
+						key={product.id}
+						product={product}
+						onEdit={() => handleOpenDialog(product)}
+						onDelete={() => handleDelete(product.id)}
+					/>
 				))}
 			</div>
 		</div>

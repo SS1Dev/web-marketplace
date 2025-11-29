@@ -74,9 +74,9 @@ model Product {
   stock       Int         @default(0)
   image       String?
   category    String?
-  type        String      @default("other") // "key" | "id" | "other"
+  type        String      @default("other") // "key" | "id" | "script" | "other"
   expireDays  String?     // "1D", "7D", "30D", "Never" (for type: "key")
-  sourceCode  String?     // Source code / script content (for type: "key")
+  sourceCode  String?     // Source code / script content (for type: "key" or "script")
   isActive    Boolean     @default(true)
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
