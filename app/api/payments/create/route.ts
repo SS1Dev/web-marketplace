@@ -124,25 +124,44 @@ export async function POST(req: NextRequest) {
 			},
 		})
 
-		// If no rows were updated, another request already created the payment
+		// If no rows were updated, another request already created the payment or order status changed
 		if (updateResult.count === 0) {
-			// Fetch the order again to get the existing charge info
+			// Fetch the order again to get the current state
 			const existingOrder = await prisma.order.findUnique({
 				where: { id: orderId },
 			})
 
-			if (existingOrder?.omiseChargeId) {
-				// Another request succeeded, return existing payment info
+			if (!existingOrder) {
+				return NextResponse.json(
+					{ error: 'Order not found' },
+					{ status: 404 },
+				)
+			}
+
+			// Check if order status changed (no longer pending)
+			if (existingOrder.status !== 'pending') {
+				return NextResponse.json(
+					{
+						error: 'Order status changed',
+						status: existingOrder.status,
+						message: `Order is now ${existingOrder.status}. Please refresh the page.`,
+					},
+					{ status: 409 },
+				)
+			}
+
+			// If order still pending but has omiseChargeId, another request succeeded
+			if (existingOrder.omiseChargeId) {
 				return NextResponse.json({
 					chargeId: existingOrder.omiseChargeId,
 					qrCodeUrl: existingOrder.qrCodeUrl,
 				})
 			}
 
-			// Order status might have changed
+			// Order status is still pending but update failed (shouldn't happen)
 			return NextResponse.json(
-				{ error: 'Order status changed. Please refresh and try again.' },
-				{ status: 409 },
+				{ error: 'Failed to create payment. Please try again.' },
+				{ status: 500 },
 			)
 		}
 

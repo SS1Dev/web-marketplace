@@ -109,6 +109,21 @@ export function PaymentPage({ order }: PaymentPageProps) {
 			const data = await response.json()
 
 			if (!response.ok) {
+				// If order status changed, refresh the page to show updated status
+				if (response.status === 409 && data.status) {
+					// Order status changed (paid, cancelled, etc.)
+					router.refresh()
+					toast({
+						title: 'Order Status Updated',
+						description: data.message || `Order is now ${data.status}. Refreshing page...`,
+						variant: 'default',
+					})
+					// Redirect to order detail page after a short delay
+					setTimeout(() => {
+						router.push(`/orders/${order.id}`)
+					}, 1500)
+					return
+				}
 				throw new Error(data.error || 'Failed to initialize payment')
 			}
 
@@ -124,7 +139,7 @@ export function PaymentPage({ order }: PaymentPageProps) {
 			setIsLoading(false)
 			isInitializingRef.current = false // Reset on error to allow retry
 		}
-	}, [order.id, order.totalAmount, order.omiseChargeId, order.qrCodeUrl, startPolling, toast])
+		}, [order.id, order.totalAmount, order.omiseChargeId, order.qrCodeUrl, startPolling, toast, router])
 
 	useEffect(() => {
 		// Prevent double execution in React Strict Mode
