@@ -44,9 +44,9 @@ export function PaymentPage({ order }: PaymentPageProps) {
 
 		setIsPolling(true)
 		
-		// Use longer polling interval when webhook is enabled (acts as fallback)
+		// Automatic polling every 10 seconds
 		// Webhook will handle real-time updates, polling is just a backup
-		const pollingInterval = 10000 // Poll every 10 seconds (webhook handles real-time)
+		const pollingInterval = 10000 // Poll every 10 seconds
 		let pollCount = 0 // Track number of polls for fallback logic
 		
 		pollingIntervalRef.current = setInterval(async () => {
@@ -62,22 +62,35 @@ export function PaymentPage({ order }: PaymentPageProps) {
 				)
 				const data = await response.json()
 
-				console.log('Payment status check:', {
-					pollCount,
-					shouldRefresh,
-					source: data.source,
-					status: data.status,
-					paid: data.paid,
-					orderStatus: data.orderStatus,
-					chargeStatus: data.chargeStatus,
-				})
-
 				// Update charge status and expiration
 				if (data.status) {
 					setChargeStatus(data.status)
 				}
 				if (data.expires_at) {
 					setQrExpiresAt(new Date(data.expires_at))
+				}
+
+				// Check if order is cancelled (from orderStatus)
+				if (data.orderStatus === 'cancelled' || order.status === 'cancelled') {
+					if (pollingIntervalRef.current) {
+						clearInterval(pollingIntervalRef.current)
+						pollingIntervalRef.current = null
+					}
+					if (pollingTimeoutRef.current) {
+						clearTimeout(pollingTimeoutRef.current)
+						pollingTimeoutRef.current = null
+					}
+					setIsPolling(false)
+					
+					toast({
+						title: 'Order Cancelled',
+						description: 'This order has been cancelled. Redirecting...',
+						variant: 'destructive',
+					})
+					
+					// Use window.location for more reliable redirect
+					window.location.href = `/orders/${order.id}`
+					return
 				}
 
 				// Handle successful payment
@@ -100,12 +113,6 @@ export function PaymentPage({ order }: PaymentPageProps) {
 					}
 					setIsPolling(false)
 					
-					console.log('Payment successful, redirecting...', {
-						status: data.status,
-						paid: data.paid,
-						orderStatus: data.orderStatus,
-					})
-					
 					toast({
 						title: 'Payment Successful',
 						description: 'Your payment has been confirmed. Redirecting...',
@@ -113,6 +120,7 @@ export function PaymentPage({ order }: PaymentPageProps) {
 					
 					// Use window.location for more reliable redirect
 					window.location.href = `/orders/${order.id}`
+					return
 				}
 
 				// Handle failed, cancelled, or expired payment
@@ -136,14 +144,12 @@ export function PaymentPage({ order }: PaymentPageProps) {
 						variant: 'destructive',
 					})
 				}
-			} catch (error) {
-				console.error('Error checking payment status:', error)
+			} catch {
 				// Don't stop polling on temporary errors
 				// If error persists, we can add retry logic or fallback to manual refresh
 				
 				// After 5 consecutive errors, try a direct refresh from Omise
 				if (pollCount >= 5 && pollCount % 5 === 0) {
-					console.warn('Multiple polling errors detected, attempting direct Omise refresh')
 					try {
 						const refreshResponse = await fetch(`/api/payments/status?orderId=${order.id}&refresh=true`)
 						const refreshData = await refreshResponse.json()
@@ -161,8 +167,8 @@ export function PaymentPage({ order }: PaymentPageProps) {
 							})
 							window.location.href = `/orders/${order.id}`
 						}
-					} catch (refreshError) {
-						console.error('Fallback refresh also failed:', refreshError)
+					} catch {
+						// Ignore refresh errors
 					}
 				}
 			}
@@ -180,13 +186,11 @@ export function PaymentPage({ order }: PaymentPageProps) {
 	const initializePayment = useCallback(async () => {
 		// Prevent duplicate calls
 		if (isInitializingRef.current) {
-			console.log('Payment initialization already in progress, skipping...')
 			return
 		}
 
 		// Check if already has charge ID (prevent duplicate)
 		if (order.omiseChargeId) {
-			console.log('Payment already initialized, skipping...')
 			setQrCodeUrl(order.qrCodeUrl || null)
 			setIsLoading(false)
 			return
@@ -278,15 +282,22 @@ export function PaymentPage({ order }: PaymentPageProps) {
 		hasMountedRef.current = true
 
 			// Only run once on mount
-			// Check if order is already paid - if so, redirect immediately
+			// Check if order is already paid or cancelled - if so, redirect immediately
 			if (order.status === 'paid' || order.status === 'completed') {
-				console.log('Order already paid, redirecting...', {
-					orderId: order.id,
-					status: order.status,
-				})
 				toast({
 					title: 'Payment Confirmed',
 					description: 'Your payment has been confirmed',
+				})
+				// Use window.location for more reliable redirect
+				window.location.href = `/orders/${order.id}`
+				return
+			}
+
+			if (order.status === 'cancelled') {
+				toast({
+					title: 'Order Cancelled',
+					description: 'This order has been cancelled',
+					variant: 'destructive',
 				})
 				// Use window.location for more reliable redirect
 				window.location.href = `/orders/${order.id}`
@@ -306,6 +317,14 @@ export function PaymentPage({ order }: PaymentPageProps) {
 
 				if (order.status === 'pending') {
 					startPolling()
+				} else if (order.status === 'cancelled') {
+					// Order is cancelled, redirect to order detail
+					toast({
+						title: 'Order Cancelled',
+						description: 'This order has been cancelled',
+						variant: 'destructive',
+					})
+					window.location.href = `/orders/${order.id}`
 				}
 		} else if (!isInitializingRef.current && !qrCodeUrl && !order.omiseChargeId) {
 			// Only initialize if:
@@ -499,51 +518,8 @@ export function PaymentPage({ order }: PaymentPageProps) {
 											<span className="text-sm font-medium">Waiting for payment confirmation...</span>
 										</div>
 										<p className="text-xs text-muted-foreground text-center">
-											The system will automatically detect your payment. Please keep this page open.
+											The system is automatically checking payment status every 10 seconds. Please keep this page open.
 										</p>
-										<Button
-											variant="outline"
-											size="sm"
-											onClick={async () => {
-												try {
-													setIsLoading(true)
-													const response = await fetch(`/api/payments/status?orderId=${order.id}&refresh=true`)
-													const data = await response.json()
-													
-													if (data.paid || data.status === 'paid') {
-														toast({
-															title: 'Payment Confirmed',
-															description: 'Your payment has been confirmed',
-														})
-														window.location.href = `/orders/${order.id}`
-													} else {
-														toast({
-															title: 'Payment Status',
-															description: `Status: ${data.status || 'Pending'}. The system will continue checking automatically.`,
-														})
-													}
-												} catch (error) {
-													toast({
-														title: 'Error',
-														description: 'Failed to check payment status. Please try again.',
-														variant: 'destructive',
-													})
-												} finally {
-													setIsLoading(false)
-												}
-											}}
-											className="mt-2"
-											disabled={isLoading}
-										>
-											{isLoading ? (
-												<>
-													<Loader2 className="mr-2 h-3 w-3 animate-spin" />
-													Checking...
-												</>
-											) : (
-												'Check Payment Status Now'
-											)}
-										</Button>
 									</div>
 								)}
 							</div>
@@ -567,6 +543,29 @@ export function PaymentPage({ order }: PaymentPageProps) {
 							</div>
 						)}
 					</div>
+
+					{order.status === 'cancelled' && (
+						<div className="border-t pt-4">
+							<div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4">
+								<div className="flex items-start space-x-3">
+									<XCircle className="h-5 w-5 text-destructive mt-0.5" />
+									<div className="flex-1">
+										<p className="text-sm font-medium text-destructive">Order Cancelled</p>
+										<p className="text-sm text-muted-foreground mt-1">
+											This order has been cancelled. You cannot proceed with payment.
+										</p>
+									</div>
+								</div>
+							</div>
+							<Button
+								onClick={() => router.push(`/orders/${order.id}`)}
+								className="w-full mt-4"
+								variant="outline"
+							>
+								View Order Details
+							</Button>
+						</div>
+					)}
 
 					{order.status === 'pending' && (
 						<div className="border-t pt-4 space-y-3">

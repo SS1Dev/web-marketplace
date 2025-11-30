@@ -24,7 +24,7 @@ export default async function OrderPaymentPage({
 		redirect('/orders')
 	}
 
-	if (order.status === 'paid' || order.status === 'completed') {
+	if (order.status === 'paid' || order.status === 'completed' || order.status === 'cancelled') {
 		redirect(`/orders/${order.id}`)
 	}
 

@@ -150,7 +150,6 @@ export async function POST(req: NextRequest) {
 			)
 		}
 
-		console.error('Error generating keys:', error)
 		return NextResponse.json(
 			{ error: 'Internal server error' },
 			{ status: 500 },

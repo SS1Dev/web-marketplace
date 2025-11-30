@@ -42,17 +42,11 @@ export async function POST(
 		// Cancel Omise charge if it exists
 		if (order.omiseChargeId) {
 			try {
-				console.log(`Attempting to cancel Omise charge: ${order.omiseChargeId}`)
-				const cancelResult = await cancelCharge(order.omiseChargeId)
-				console.log(`Omise charge ${order.omiseChargeId} cancelled successfully:`, cancelResult)
-			} catch (error) {
-				// Log error but continue with order cancellation
+				await cancelCharge(order.omiseChargeId)
+			} catch {
 				// The charge may already be cancelled or paid
-				console.error(`Failed to cancel Omise charge ${order.omiseChargeId}:`, error)
 				// Still continue with order cancellation even if Omise cancel fails
 			}
-		} else {
-			console.log(`Order ${order.id} has no omiseChargeId, skipping Omise cancellation`)
 		}
 
 		// Update order status to cancelled
@@ -64,8 +58,7 @@ export async function POST(
 		})
 
 		return NextResponse.json({ success: true, message: 'Order cancelled successfully' })
-	} catch (error) {
-		console.error('Error cancelling order:', error)
+	} catch {
 		return NextResponse.json(
 			{ error: 'Internal server error' },
 			{ status: 500 },

@@ -111,7 +111,6 @@ export async function POST(req: NextRequest) {
 
 		// Validate product price
 		if (product.price === null || product.price === undefined || product.price < 0) {
-			console.error('Invalid product price:', { productId, price: product.price })
 			return NextResponse.json(
 				{
 					error: 'Invalid product',
@@ -161,11 +160,6 @@ export async function POST(req: NextRequest) {
 
 		// Validate total amount calculation
 		if (!isFinite(totalAmount) || totalAmount < 0) {
-			console.error('Invalid total amount calculation:', {
-				productPrice: product.price,
-				quantity,
-				totalAmount,
-			})
 			return NextResponse.json(
 				{
 					error: 'Invalid order amount',
@@ -214,16 +208,6 @@ export async function POST(req: NextRequest) {
 				},
 			})
 		} catch (orderError: any) {
-			console.error('Error creating order:', {
-				userId,
-				productId,
-				quantity,
-				totalAmount,
-				error: orderError,
-				code: orderError?.code,
-				meta: orderError?.meta,
-			})
-
 			// Re-throw to be handled by outer catch block
 			throw orderError
 		}
@@ -246,30 +230,14 @@ export async function POST(req: NextRequest) {
 
 			// Extract QR code URL according to Omise PromptPay documentation
 			qrCodeUrl = charge.qr_code_url || null
-
-			console.log('Omise charge created successfully:', {
-				chargeId: charge.id,
-				orderId: order.id,
-				orderAmount: totalAmount,
-				hasQrCode: !!qrCodeUrl,
-			})
 		} catch (chargeError: any) {
-			console.error('Error creating Omise charge:', {
-				orderId: order.id,
-				userId,
-				productId,
-				totalAmount,
-				error: chargeError,
-			})
-
 			// If charge creation fails, delete the order to maintain data integrity
 			try {
 				await prisma.order.delete({
 					where: { id: order.id },
 				})
-				console.log('Order deleted after charge creation failure')
-			} catch (deleteError) {
-				console.error('Failed to delete order after charge creation failure:', deleteError)
+			} catch {
+				// Ignore delete errors - order may have been deleted already
 			}
 
 			// Handle Omise errors
@@ -308,20 +276,9 @@ export async function POST(req: NextRequest) {
 					paymentMethod: 'promptpay',
 				},
 			})
-
-			console.log('Order updated with payment information:', {
-				orderId: updatedOrder.id,
-				chargeId: updatedOrder.omiseChargeId,
-				hasQrCode: !!updatedOrder.qrCodeUrl,
-			})
 		} catch (updateError: any) {
 			// If update fails (e.g., unique constraint violation from concurrent request),
 			// fetch current state and verify
-			console.warn('Direct update failed, checking current order state:', {
-				orderId: order.id,
-				chargeId: charge.id,
-				error: updateError?.message,
-			})
 
 			try {
 				// Fetch current order state
@@ -338,20 +295,10 @@ export async function POST(req: NextRequest) {
 					if (currentOrder.omiseChargeId === charge.id) {
 						// Already set correctly - use current order
 						updatedOrder = currentOrder
-						console.log('Order already has correct omiseChargeId (possibly set by concurrent request/webhook)')
 					} else {
 						// Different charge ID - this is unexpected
-						console.error('Order already has different omiseChargeId:', {
-							orderId: order.id,
-							existingChargeId: currentOrder.omiseChargeId,
-							newChargeId: charge.id,
-						})
-						
-						// Still use current order but log the issue
-						// The charge was created, so we'll return success
-						// This could be a race condition - webhook may have set a different charge
+						// Still use current order - webhook may have set a different charge
 						updatedOrder = currentOrder
-						console.warn('Order has different omiseChargeId, but proceeding with existing value')
 					}
 				} else {
 					// Order doesn't have omiseChargeId yet - try updateMany as fallback
@@ -374,7 +321,6 @@ export async function POST(req: NextRequest) {
 						
 						if (fetchedOrder) {
 							updatedOrder = fetchedOrder
-							console.log('Order update succeeded using updateMany fallback')
 						} else {
 							throw new Error('Order not found after updateMany')
 						}
@@ -383,19 +329,11 @@ export async function POST(req: NextRequest) {
 						throw updateError
 					}
 				}
-			} catch (fallbackError: any) {
-				console.error('All update attempts failed:', {
-					orderId: order.id,
-					chargeId: charge.id,
-					originalError: updateError?.message,
-					fallbackError: fallbackError?.message,
-				})
-
+			} catch {
 				// If all updates fail, we still have the order and charge
 				// Webhook will handle updating the order later
 				// For now, return the order as-is (without omiseChargeId)
 				// The charge was created successfully, so user can still pay
-				console.warn('Failed to update order with omiseChargeId, but charge was created. Webhook will handle this.')
 				updatedOrder = order // Use original order - webhook will update it
 			}
 		}
@@ -425,17 +363,12 @@ export async function POST(req: NextRequest) {
 			})
 		} catch (itemError: any) {
 			// If order item creation fails, we should delete the order to maintain data integrity
-			console.error('Error creating order item, attempting to clean up order:', {
-				orderId: order.id,
-				error: itemError,
-			})
-
 			try {
 				await prisma.order.delete({
 					where: { id: order.id },
 				})
-			} catch (deleteError) {
-				console.error('Failed to clean up order after item creation failure:', deleteError)
+			} catch {
+				// Ignore delete errors - order may have been deleted already
 			}
 
 			// Re-throw to be handled by outer catch block
@@ -485,24 +418,11 @@ export async function POST(req: NextRequest) {
 				}
 			}
 
-			console.error('Unique constraint violation when creating order:', {
-				code: error.code,
-				target,
-				field,
-				meta: error.meta,
-				error: error.message,
-			})
-
 			// Determine appropriate error message and status based on the conflicted field
 			if (field === 'omiseChargeId') {
 				// This is a rare case - unique constraint on null/undefined omiseChargeId
 				// This can happen in MongoDB if there's a data integrity issue
 				// Try to handle gracefully
-				console.error('Unique constraint violation on omiseChargeId for new order - this should not happen', {
-					userId: userId || 'unknown',
-					productId: productId || 'unknown',
-				})
-
 				return NextResponse.json(
 					{
 						error: 'Order creation conflict',
@@ -526,12 +446,6 @@ export async function POST(req: NextRequest) {
 
 		// Handle other Prisma errors
 		if (error?.code) {
-			console.error('Prisma error when creating order:', {
-				code: error.code,
-				message: error.message,
-				meta: error.meta,
-			})
-
 			// Handle foreign key constraint violations (P2003)
 			if (error.code === 'P2003') {
 				const field = error.meta?.field_name || 'unknown'
@@ -579,11 +493,6 @@ export async function POST(req: NextRequest) {
 		}
 
 		// Handle all other errors as internal server errors
-		console.error('Unexpected error creating order:', {
-			error,
-			message: error?.message,
-			stack: error?.stack,
-		})
 		return NextResponse.json(
 			{
 				error: 'Internal server error',

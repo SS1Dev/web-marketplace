@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { getChargeStatus } from '@/lib/omise'
-import { generateKey, calculateExpireDate } from '@/lib/key-generator'
+import { generateKey } from '@/lib/key-generator'
 
 export const dynamic = 'force-dynamic'
 
@@ -76,19 +76,7 @@ export async function GET(req: NextRequest) {
 		if (shouldCheckOmise) {
 			try {
 				charge = await getChargeStatus(order.omiseChargeId)
-				console.log('Omise charge status fetched:', {
-					chargeId: order.omiseChargeId,
-					paid: charge.paid,
-					status: charge.status,
-					orderStatus: order.status,
-					reason: refresh ? 'explicit-refresh' : orderAge > 30000 ? 'timeout-fallback' : 'pending-check',
-				})
-			} catch (omiseError: any) {
-				console.error('Failed to fetch charge status from Omise (fallback):', {
-					chargeId: order.omiseChargeId,
-					error: omiseError?.message,
-					fallbackToDatabase: true,
-				})
+			} catch {
 				// Fallback to database status if Omise API fails
 				// Don't throw - return database status instead
 				charge = { paid: false, status: order.status, expires_at: null, source_charge_status: null }
@@ -156,9 +144,6 @@ export async function GET(req: NextRequest) {
 							}
 
 							if (existingKey) {
-								console.error(
-									`Failed to generate unique key for order item ${item.id} after multiple attempts`,
-								)
 								continue
 							}
 
@@ -243,7 +228,6 @@ export async function GET(req: NextRequest) {
 			source: dataSource, // Indicate data source (database, omise-api-refresh, omise-api-fallback)
 		})
 	} catch (error) {
-		console.error('Error checking payment status:', error)
 		return NextResponse.json(
 			{ error: 'Internal server error' },
 			{ status: 500 },

@@ -13,7 +13,6 @@ export const dynamic = 'force-dynamic'
  */
 function verifyOmiseSignature(payload: string, signature: string): boolean {
 	if (!process.env.OMISE_SECRET_KEY) {
-		console.error('OMISE_SECRET_KEY is not set')
 		return false
 	}
 
@@ -46,17 +45,12 @@ async function handleChargeCreate(event: any) {
 	const orderId = charge.metadata?.orderId
 
 	if (!orderId) {
-		console.log(`Charge ${charge.id} has no orderId in metadata, skipping`)
 		return
 	}
 
 	// Extract QR code URL according to Omise PromptPay documentation:
 	// charge.source.scannable_code.image.download_uri
 	const qrCodeUrl = charge.source?.scannable_code?.image?.download_uri || null
-
-	if (!qrCodeUrl) {
-		console.log(`Charge ${charge.id} has no QR code URL in source, skipping QR code update`)
-	}
 
 	// Find order by metadata orderId first, then try omiseChargeId
 	let order = await prisma.order.findUnique({
@@ -71,7 +65,6 @@ async function handleChargeCreate(event: any) {
 	}
 
 	if (!order) {
-		console.log(`Order not found for charge ${charge.id}, orderId: ${orderId}`)
 		return
 	}
 
@@ -102,16 +95,7 @@ async function handleChargeCreate(event: any) {
 			data: updateData,
 		})
 
-		if (updateResult.count > 0) {
-			const updates = []
-			if (updateData.omiseChargeId) updates.push('charge ID')
-			if (updateData.qrCodeUrl) updates.push('QR code URL')
-			console.log(`Order ${order.id} updated with ${updates.join(' and ')}`)
-		} else {
-			console.log(`Order ${order.id} already has charge ID and QR code URL (race condition prevented)`)
-		}
-	} else {
-		console.log(`Order ${order.id} already has charge ID and QR code URL`)
+		// Update completed (or already set)
 	}
 }
 
@@ -130,17 +114,10 @@ async function handleChargeComplete(event: any) {
 	const sourceChargeStatus = charge.source?.charge_status
 	const isPaid = charge.paid
 
-	console.log(`Processing charge.complete for ${charge.id}`, {
-		status: chargeStatus,
-		sourceChargeStatus: sourceChargeStatus,
-		paid: isPaid,
-	})
-
 	// Get orderId from charge metadata
 	const orderId = charge.metadata?.orderId
 
 	if (!orderId) {
-		console.error(`Charge ${charge.id} has no orderId in metadata`)
 		return
 	}
 
@@ -157,13 +134,11 @@ async function handleChargeComplete(event: any) {
 	}
 
 	if (!order) {
-		console.error(`Order not found for charge ${charge.id}, orderId: ${orderId}`)
 		return
 	}
 
 	// Skip if already processed as paid
 	if (order.status === 'paid') {
-		console.log(`Order ${order.id} already marked as paid, skipping`)
 		return
 	}
 
@@ -182,8 +157,6 @@ async function handleChargeComplete(event: any) {
 				status: 'paid',
 			},
 		})
-
-		console.log(`Order ${order.id} marked as paid via webhook (charge.complete)`)
 
 		// Get order items
 		const orderItems = await prisma.orderItem.findMany({
@@ -225,9 +198,6 @@ async function handleChargeComplete(event: any) {
 						}
 
 						if (existingKey) {
-							console.error(
-								`Failed to generate unique key for order item ${item.id} after multiple attempts`,
-							)
 							continue
 						}
 
@@ -275,8 +245,6 @@ async function handleChargeComplete(event: any) {
 								},
 							})
 						}
-
-						console.log(`Generated ${keysToGenerate.length} keys for order ${order.id}`)
 					}
 				}
 			} else {
@@ -289,8 +257,6 @@ async function handleChargeComplete(event: any) {
 						},
 					},
 				})
-
-				console.log(`Updated stock for product ${item.productId}`)
 			}
 		}
 		return
@@ -315,22 +281,10 @@ async function handleChargeComplete(event: any) {
 				},
 			})
 
-			const reason = isPaid !== true 
-				? 'payment not completed (paid !== true)'
-				: 'charge status is failed'
-			
-			console.log(`Order ${order.id} marked as cancelled: ${reason}`)
-		} else {
-			console.log(`Order ${order.id} already processed (status: ${order.status}), skipping cancellation`)
+			// Order cancelled
 		}
 		return
 	}
-
-	// If we reach here, payment is in an unclear state
-	// Log for debugging but don't process
-	console.warn(
-		`Charge ${charge.id} is in an unclear state: paid=${isPaid}, status=${chargeStatus}, sourceChargeStatus=${sourceChargeStatus}. Order ${order.id} status unchanged.`
-	)
 }
 
 /**
@@ -358,7 +312,6 @@ async function handleChargeExpire(event: any) {
 	}
 
 	if (!order) {
-		console.error(`Order not found for expired charge ${charge.id}, orderId: ${orderId || 'N/A'}`)
 		return
 	}
 
@@ -370,10 +323,6 @@ async function handleChargeExpire(event: any) {
 				status: 'cancelled',
 			},
 		})
-
-		console.log(`Order ${order.id} marked as cancelled (PromptPay QR code expired)`)
-	} else {
-		console.log(`Order ${order.id} already processed (status: ${order.status}), skipping expiration cancellation`)
 	}
 }
 
@@ -388,37 +337,18 @@ export async function POST(req: NextRequest) {
 			req.headers.get('X-OMISE-SIGNATURE') ||
 			''
 
-		if (!signature) {
-			// Log all headers for debugging
-			const allHeaders: Record<string, string> = {}
-			req.headers.forEach((value, key) => {
-				allHeaders[key] = value
-			})
-			console.error('Missing X-Omise-Signature header')
-			console.error('Received headers:', JSON.stringify(allHeaders, null, 2))
-			
-			// If no signature, still process the webhook but log warning
-			// Some webhook providers might not send signature for test events
-			console.warn('⚠️ Processing webhook without signature verification')
-		}
-
 		// Verify webhook signature (only if signature exists)
 		if (signature) {
 			if (!verifyOmiseSignature(rawBody, signature)) {
-				console.error('Invalid webhook signature')
 				return NextResponse.json(
 					{ error: 'Invalid signature' },
 					{ status: 401 },
 				)
 			}
-		} else {
-			console.warn('⚠️ Skipping signature verification - no signature header found')
 		}
 
 		// Parse event data
 		const event = JSON.parse(rawBody)
-
-		console.log(`Received Omise webhook event: ${event.key}`)
 
 		// Handle different event types
 		switch (event.key) {
@@ -435,12 +365,12 @@ export async function POST(req: NextRequest) {
 				break
 
 			default:
-				console.log(`Unhandled webhook event: ${event.key}`)
+				// Unhandled event type
+				break
 		}
 
 		return NextResponse.json({ received: true })
-	} catch (error) {
-		console.error('Error processing Omise webhook:', error)
+	} catch {
 		return NextResponse.json(
 			{ error: 'Internal server error' },
 			{ status: 500 },

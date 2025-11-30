@@ -12,126 +12,316 @@ const createPaymentSchema = z.object({
 	amount: z.number(),
 })
 
+const PROMPTPAY_MIN_AMOUNT_SATANG = 2000
+const PROMPTPAY_MAX_AMOUNT_SATANG = 15000000
+const PROMPTPAY_MIN_AMOUNT_THB = 20.0
+const PROMPTPAY_MAX_AMOUNT_THB = 150000.0
+const AMOUNT_TOLERANCE = 0.01
+
+interface ProductData {
+	name?: string
+}
+
+interface OrderItemWithProductData {
+	id: string
+	quantity: number
+	productData: ProductData | null
+}
+
+function createErrorResponse(
+	error: string,
+	message: string,
+	status: number,
+	additional?: Record<string, unknown>,
+) {
+	return NextResponse.json(
+		{
+			error,
+			message,
+			...additional,
+		},
+		{ status },
+	)
+}
+
+function buildOrderDescription(orderItems: OrderItemWithProductData[], orderId: string): string {
+	const productNames = orderItems.map((item) => {
+		try {
+			const productName =
+				(item.productData as ProductData)?.name || 'Unknown Product'
+			const quantity = item.quantity > 1 ? ` x${item.quantity}` : ''
+			return `${productName}${quantity}`
+		} catch {
+			return `Item x${item.quantity || 1}`
+		}
+	})
+
+	return productNames.length > 0
+		? productNames.join(', ')
+		: `Order #${orderId.slice(0, 8)}`
+}
+
+function validateAmount(amount: number) {
+	const amountInSatang = Math.round(amount * 100)
+
+	if (amountInSatang < PROMPTPAY_MIN_AMOUNT_SATANG) {
+		return createErrorResponse(
+			'Amount too low',
+			`Amount must be at least THB ${PROMPTPAY_MIN_AMOUNT_THB.toFixed(2)} for PromptPay payment.`,
+			400,
+		)
+	}
+
+	if (amountInSatang > PROMPTPAY_MAX_AMOUNT_SATANG) {
+		return createErrorResponse(
+			'Amount too high',
+			`Amount cannot exceed THB ${PROMPTPAY_MAX_AMOUNT_THB.toFixed(2)} for PromptPay payment.`,
+			400,
+		)
+	}
+
+	return null
+}
+
+function handleChargeError(chargeError: unknown) {
+	const error = chargeError as {
+		omiseError?: { code?: string; message?: string }
+		statusCode?: number
+		message?: string
+	}
+
+	const omiseError = error?.omiseError
+	const statusCode = error?.statusCode
+	const errorMessage = error?.message || 'Failed to create payment charge'
+
+	if (errorMessage.includes('at least') || errorMessage.includes('exceed')) {
+		return createErrorResponse('Invalid amount', errorMessage, 400)
+	}
+
+	if (errorMessage.includes('OMISE_SECRET_KEY') || errorMessage.includes('not set')) {
+		return createErrorResponse(
+			'Payment service configuration error',
+			'Payment service is not properly configured. Please contact support.',
+			500,
+		)
+	}
+
+	if (omiseError?.code) {
+		if (statusCode === 401 || omiseError.code === 'authentication_failure') {
+			return createErrorResponse(
+				'Payment service authentication error',
+				'Payment service authentication failed. Please contact support.',
+				500,
+			)
+		}
+
+		if (statusCode === 400 || omiseError.code === 'bad_request') {
+			return createErrorResponse(
+				'Invalid payment request',
+				omiseError.message || errorMessage,
+				400,
+			)
+		}
+
+		if (statusCode === 429 || omiseError.code === 'rate_limit') {
+			return createErrorResponse(
+				'Too many requests',
+				'Too many payment requests. Please wait a moment and try again.',
+				429,
+			)
+		}
+	}
+
+	return createErrorResponse(
+		'Payment creation failed',
+		errorMessage,
+		500,
+		omiseError ? { details: omiseError } : undefined,
+	)
+}
+
+async function handleChargeIdConflict(chargeId: string, orderId: string) {
+	const existingOrder = await prisma.order.findUnique({
+		where: { omiseChargeId: chargeId },
+	})
+
+	if (!existingOrder) {
+		return null
+	}
+
+	if (existingOrder.id === orderId) {
+		return NextResponse.json({
+			chargeId,
+			qrCodeUrl: existingOrder.qrCodeUrl,
+			status: 'pending',
+		})
+	}
+
+	return createErrorResponse(
+		'Payment creation conflict',
+		'This payment has already been associated with another order. Please contact support.',
+		409,
+		{ conflictField: 'omiseChargeId' },
+	)
+}
+
+async function updateOrderWithCharge(
+	orderId: string,
+	chargeId: string,
+	qrCodeUrl: string | null,
+) {
+	try {
+		const updateResult = await prisma.order.updateMany({
+			where: {
+				id: orderId,
+				omiseChargeId: null,
+				status: 'pending',
+			},
+			data: {
+				omiseChargeId: chargeId,
+				qrCodeUrl,
+				paymentMethod: 'promptpay',
+			},
+		})
+
+		return { success: true, updateResult }
+	} catch (dbError: unknown) {
+		const error = dbError as { code?: string; message?: string }
+
+		if (error?.code === 'P2002') {
+			const existingOrder = await prisma.order.findUnique({
+				where: { omiseChargeId: chargeId },
+			})
+
+			if (existingOrder?.id === orderId) {
+				return {
+					success: true,
+					existingOrder,
+					qrCodeUrl: existingOrder.qrCodeUrl || qrCodeUrl,
+				}
+			}
+
+			return {
+				success: false,
+				response: createErrorResponse(
+					'Payment creation conflict',
+					'This payment has already been associated with another order.',
+					409,
+					{ conflictField: 'omiseChargeId' },
+				),
+			}
+		}
+
+		return {
+			success: false,
+			response: createErrorResponse(
+				'Database error',
+				'Failed to save payment information. Please try again.',
+				500,
+			),
+		}
+	}
+}
+
+async function handleUpdateFailure(orderId: string, chargeId: string) {
+	const existingOrder = await prisma.order.findUnique({
+		where: { id: orderId },
+	})
+
+	if (!existingOrder) {
+		return createErrorResponse('Order not found', '', 404)
+	}
+
+	if (existingOrder.status !== 'pending') {
+		return createErrorResponse(
+			'Order state conflict',
+			`Order status has changed to "${existingOrder.status}". Please refresh the page.`,
+			409,
+			{
+				currentStatus: existingOrder.status,
+				conflictType: 'state_change',
+			},
+		)
+	}
+
+	if (existingOrder.omiseChargeId) {
+		return NextResponse.json({
+			chargeId: existingOrder.omiseChargeId,
+			qrCodeUrl: existingOrder.qrCodeUrl,
+		})
+	}
+
+	return createErrorResponse(
+		'Payment creation failed',
+		'Unable to complete payment creation. Please try again or contact support if the issue persists.',
+		500,
+	)
+}
+
 export async function POST(req: NextRequest) {
 	try {
 		const session = await getServerSession(authOptions)
 
 		if (!session) {
-			return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+			return createErrorResponse('Unauthorized', '', 401)
 		}
 
 		const body = await req.json()
 		const { orderId, amount } = createPaymentSchema.parse(body)
 
-		// Get order
 		const order = await prisma.order.findUnique({
 			where: { id: orderId },
 		})
 
 		if (!order) {
-			return NextResponse.json({ error: 'Order not found' }, { status: 404 })
+			return createErrorResponse('Order not found', '', 404)
 		}
 
 		if (order.userId !== session.user.id) {
-			return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+			return createErrorResponse('Unauthorized', '', 401)
 		}
 
 		if (order.status !== 'pending') {
-			return NextResponse.json(
-				{ error: 'Order is not pending payment' },
-				{ status: 400 },
-			)
+			return createErrorResponse('Order is not pending payment', '', 400)
 		}
 
-		// Check if order already has a charge ID (prevent duplicate payment creation)
 		if (order.omiseChargeId) {
-			// Return existing charge info
 			return NextResponse.json({
 				chargeId: order.omiseChargeId,
 				qrCodeUrl: order.qrCodeUrl,
 			})
 		}
 
-		// Get order items to build description from product names
 		const orderItems = await prisma.orderItem.findMany({
 			where: { orderId },
 		})
 
 		if (!orderItems || orderItems.length === 0) {
-			console.error('Order has no items:', { orderId })
-			return NextResponse.json(
-				{
-					error: 'Invalid order',
-					message: 'Order has no items. Please contact support.',
-				},
-				{ status: 400 },
+			return createErrorResponse(
+				'Invalid order',
+				'Order has no items. Please contact support.',
+				400,
 			)
 		}
 
-		// Build description from product names
-		// Type assertion needed because Prisma doesn't know about embedded Json fields at compile time
-		const productNames = orderItems.map((item) => {
-			try {
-				const orderItemWithData = item as any
-				const productData = orderItemWithData.productData || {}
-				const productName = productData?.name || 'Unknown Product'
-				const quantity = item.quantity > 1 ? ` x${item.quantity}` : ''
-				return `${productName}${quantity}`
-			} catch (error) {
-				console.error('Error processing order item:', { itemId: item.id, error })
-				return `Item x${item.quantity || 1}`
-			}
-		})
+		const description = buildOrderDescription(
+			orderItems as OrderItemWithProductData[],
+			orderId,
+		)
 
-		const description = productNames.length > 0
-			? productNames.join(', ')
-			: `Order #${orderId.slice(0, 8)}`
-
-		// Validate amount against Omise PromptPay limits
-		// According to Omise PromptPay documentation:
-		// - Minimum: 2000 satang (THB 20.00)
-		// - Maximum: 15000000 satang (THB 150,000.00)
-		const amountInSatang = Math.round(amount * 100)
-		
-		if (amountInSatang < 2000) {
-			return NextResponse.json(
-				{
-					error: 'Amount too low',
-					message: 'Amount must be at least THB 20.00 for PromptPay payment.',
-				},
-				{ status: 400 },
-			)
+		const amountValidationError = validateAmount(amount)
+		if (amountValidationError) {
+			return amountValidationError
 		}
-		
-		if (amountInSatang > 15000000) {
-			return NextResponse.json(
-				{
-					error: 'Amount too high',
-					message: 'Amount cannot exceed THB 150,000.00 for PromptPay payment.',
-				},
-				{ status: 400 },
+
+		if (Math.abs(order.totalAmount - amount) > AMOUNT_TOLERANCE) {
+			return createErrorResponse(
+				'Amount mismatch',
+				'Payment amount does not match order total. Please refresh the page.',
+				400,
 			)
 		}
 
-		// Verify order amount matches payment amount (security check)
-		if (Math.abs(order.totalAmount - amount) > 0.01) {
-			console.warn('Order amount mismatch:', {
-				orderId,
-				orderAmount: order.totalAmount,
-				paymentAmount: amount,
-			})
-			return NextResponse.json(
-				{
-					error: 'Amount mismatch',
-					message: 'Payment amount does not match order total. Please refresh the page.',
-				},
-				{ status: 400 },
-			)
-		}
-
-		// Create Omise PromptPay charge (following Omise standards)
-		// Creates source and charge in a single API request (server-side approach)
-		// This ensures we have a valid charge ID and QR code URL before updating database
 		let charge
 		try {
 			charge = await createPromptpayCharge({
@@ -139,325 +329,92 @@ export async function POST(req: NextRequest) {
 				orderId,
 				description,
 			})
-		} catch (chargeError: any) {
-			const omiseError = chargeError?.omiseError
-			const statusCode = chargeError?.statusCode
-			const errorMessage = chargeError?.message || 'Failed to create payment charge'
-
-			console.error('Error creating Omise charge:', {
-				orderId,
-				amount,
-				error: chargeError,
-				omiseError,
-				statusCode,
-				message: errorMessage,
-			})
-
-			// Handle amount validation errors (should be 400)
-			if (errorMessage.includes('at least') || errorMessage.includes('exceed')) {
-				return NextResponse.json(
-					{
-						error: 'Invalid amount',
-						message: errorMessage,
-					},
-					{ status: 400 },
-				)
-			}
-
-			// Handle configuration errors (missing API key, etc.) - 500
-			if (errorMessage.includes('OMISE_SECRET_KEY') || errorMessage.includes('not set')) {
-				return NextResponse.json(
-					{
-						error: 'Payment service configuration error',
-						message: 'Payment service is not properly configured. Please contact support.',
-					},
-					{ status: 500 },
-				)
-			}
-
-			// Handle Omise API error codes
-			if (omiseError?.code) {
-				// Authentication errors (401)
-				if (statusCode === 401 || omiseError.code === 'authentication_failure') {
-					return NextResponse.json(
-						{
-							error: 'Payment service authentication error',
-							message: 'Payment service authentication failed. Please contact support.',
-						},
-						{ status: 500 },
-					)
-				}
-
-				// Validation errors (400) - bad_request
-				if (statusCode === 400 || omiseError.code === 'bad_request') {
-					return NextResponse.json(
-						{
-							error: 'Invalid payment request',
-							message: omiseError.message || errorMessage,
-						},
-						{ status: 400 },
-					)
-				}
-
-				// Rate limiting (429)
-				if (statusCode === 429 || omiseError.code === 'rate_limit') {
-					return NextResponse.json(
-						{
-							error: 'Too many requests',
-							message: 'Too many payment requests. Please wait a moment and try again.',
-						},
-						{ status: 429 },
-					)
-				}
-			}
-
-			// Other Omise API errors (network, timeout, server errors) - 500
-			return NextResponse.json(
-				{
-					error: 'Payment creation failed',
-					message: errorMessage,
-					...(omiseError && { details: omiseError }),
-				},
-				{ status: 500 },
-			)
+		} catch (chargeError) {
+			return handleChargeError(chargeError)
 		}
 
-		// Validate charge response
 		if (!charge || !charge.id) {
-			console.error('Invalid charge response from Omise:', { charge, orderId })
-			return NextResponse.json(
-				{
-					error: 'Invalid payment response',
-					message: 'Payment service returned an invalid response. Please try again.',
-				},
-				{ status: 500 },
+			return createErrorResponse(
+				'Invalid payment response',
+				'Payment service returned an invalid response. Please try again.',
+				500,
 			)
 		}
 
-		// Check if charge ID already exists in another order
-		const existingOrderWithCharge = await prisma.order.findUnique({
-			where: { omiseChargeId: charge.id },
-		})
-
-		if (existingOrderWithCharge) {
-			// Charge ID already exists
-			if (existingOrderWithCharge.id === orderId) {
-				// Same order, return existing info (idempotent response)
-				return NextResponse.json({
-					chargeId: charge.id,
-					qrCodeUrl: existingOrderWithCharge.qrCodeUrl,
-					status: 'pending', // Default status
-				})
-			}
-			// Different order - Charge ID conflict (shouldn't happen but handle it)
-			// This indicates a potential data integrity issue
-			console.error('Charge ID conflict detected:', {
-				chargeId: charge.id,
-				requestedOrderId: orderId,
-				existingOrderId: existingOrderWithCharge.id,
-			})
-			return NextResponse.json(
-				{
-					error: 'Payment creation conflict',
-					message: 'This payment has already been associated with another order. Please contact support.',
-					conflictField: 'omiseChargeId',
-				},
-				{ status: 409 }, // Conflict: resource conflict
-			)
+		const conflictResponse = await handleChargeIdConflict(charge.id, orderId)
+		if (conflictResponse) {
+			return conflictResponse
 		}
 
-		// Extract QR code URL according to Omise PromptPay documentation:
-		// charge.source.scannable_code.image.download_uri
 		const qrCodeUrl = charge.qr_code_url || null
+		const updateResult = await updateOrderWithCharge(orderId, charge.id, qrCodeUrl)
 
-		// Use updateMany with condition to atomically update only if omiseChargeId is still null
-		// This prevents race conditions where multiple requests try to create payment simultaneously
-		let updateResult
-		try {
-			updateResult = await prisma.order.updateMany({
-				where: {
-					id: orderId,
-					omiseChargeId: null, // Only update if omiseChargeId is still null
-					status: 'pending', // And status is still pending
-				},
-				data: {
-					omiseChargeId: charge.id,
-					qrCodeUrl: qrCodeUrl, // QR code URL for customer to scan
-					paymentMethod: 'promptpay',
-				},
-			})
-		} catch (dbError: any) {
-			console.error('Database error updating order with charge:', {
-				orderId,
-				chargeId: charge.id,
-				error: dbError,
-				code: dbError?.code,
-				message: dbError?.message,
-			})
-
-			// Handle Prisma errors
-			if (dbError?.code === 'P2002') {
-				// Unique constraint violation - charge ID already exists
-				const existingOrder = await prisma.order.findUnique({
-					where: { omiseChargeId: charge.id },
-				})
-
-				if (existingOrder?.id === orderId) {
-					// Same order - idempotent, return existing data
-					return NextResponse.json({
-						chargeId: charge.id,
-						qrCodeUrl: existingOrder.qrCodeUrl || qrCodeUrl,
-						status: 'pending',
-						expires_at: charge.expires_at,
-					})
-				}
-
-				return NextResponse.json(
-					{
-						error: 'Payment creation conflict',
-						message: 'This payment has already been associated with another order.',
-						conflictField: 'omiseChargeId',
-					},
-					{ status: 409 },
-				)
-			}
-
-			// Other database errors
-			return NextResponse.json(
-				{
-					error: 'Database error',
-					message: 'Failed to save payment information. Please try again.',
-				},
-				{ status: 500 },
-			)
+		if (!updateResult.success) {
+			return updateResult.response
 		}
 
-		// If no rows were updated, another request already created the payment or order status changed
-		if (updateResult.count === 0) {
-			// Fetch the order again to get the current state
-			const existingOrder = await prisma.order.findUnique({
-				where: { id: orderId },
-			})
-
-			if (!existingOrder) {
-				return NextResponse.json(
-					{ error: 'Order not found' },
-					{ status: 404 },
-				)
-			}
-
-			// Check if order status changed (no longer pending)
-			// This indicates a state conflict - order was updated by another process
-			if (existingOrder.status !== 'pending') {
-				return NextResponse.json(
-					{
-						error: 'Order state conflict',
-						message: `Order status has changed to "${existingOrder.status}". Please refresh the page.`,
-						currentStatus: existingOrder.status,
-						conflictType: 'state_change',
-					},
-					{ status: 409 }, // Conflict: state conflict
-				)
-			}
-
-			// If order still pending but has omiseChargeId, another request succeeded
-			if (existingOrder.omiseChargeId) {
-				return NextResponse.json({
-					chargeId: existingOrder.omiseChargeId,
-					qrCodeUrl: existingOrder.qrCodeUrl,
-				})
-			}
-
-			// Order status is still pending but update failed (shouldn't happen)
-			// This indicates a race condition or unexpected database state
-			console.error('Unexpected update failure:', {
-				orderId,
+		if (updateResult.existingOrder) {
+			return NextResponse.json({
 				chargeId: charge.id,
-				orderStatus: existingOrder.status,
-				hasChargeId: !!existingOrder.omiseChargeId,
+				qrCodeUrl: updateResult.qrCodeUrl,
+				status: 'pending',
 			})
-			return NextResponse.json(
-				{
-					error: 'Payment creation failed',
-					message: 'Unable to complete payment creation. Please try again or contact support if the issue persists.',
-				},
-				{ status: 500 },
-			)
+		}
+
+		if (updateResult.updateResult && updateResult.updateResult.count === 0) {
+			return handleUpdateFailure(orderId, charge.id)
 		}
 
 		return NextResponse.json({
 			chargeId: charge.id,
-			qrCodeUrl: charge.qr_code_url, // QR code URL for PromptPay payment
-			status: charge.status, // Charge status: pending, successful, failed
-			expires_at: charge.expires_at, // QR code expiration time (24 hours default)
+			qrCodeUrl: charge.qr_code_url,
+			status: charge.status,
+			expires_at: charge.expires_at,
 		})
-	} catch (error: any) {
-		// Handle validation errors
+	} catch (error: unknown) {
 		if (error instanceof z.ZodError) {
-			return NextResponse.json(
-				{
-					error: 'Invalid request data',
-					message: 'The provided data is invalid.',
-					details: error.errors,
-				},
-				{ status: 400 },
+			return createErrorResponse(
+				'Invalid request data',
+				'The provided data is invalid.',
+				400,
+				{ details: error.errors },
 			)
 		}
 
-		// Handle JSON parsing errors
 		if (error instanceof SyntaxError) {
-			return NextResponse.json(
-				{
-					error: 'Invalid request format',
-					message: 'The request body is not valid JSON.',
-				},
-				{ status: 400 },
+			return createErrorResponse(
+				'Invalid request format',
+				'The request body is not valid JSON.',
+				400,
 			)
 		}
 
-		// Handle Prisma errors
-		if (error?.code) {
-			console.error('Prisma error creating payment:', {
-				code: error.code,
-				message: error.message,
-				meta: error.meta,
-			})
-
-			if (error.code === 'P2002') {
-				return NextResponse.json(
+		const prismaError = error as { code?: string; message?: string; meta?: unknown }
+		if (prismaError?.code) {
+			if (prismaError.code === 'P2002') {
+				return createErrorResponse(
+					'Resource conflict',
+					'A conflict occurred while creating the payment. Please try again.',
+					409,
 					{
-						error: 'Resource conflict',
-						message: 'A conflict occurred while creating the payment. Please try again.',
-						conflictField: error.meta?.target?.[0],
+						conflictField: (prismaError.meta as { target?: string[] })?.target?.[0],
 					},
-					{ status: 409 },
 				)
 			}
 
-			if (error.code === 'P2025') {
-				return NextResponse.json(
-					{
-						error: 'Order not found',
-						message: 'The order does not exist or has been deleted.',
-					},
-					{ status: 404 },
+			if (prismaError.code === 'P2025') {
+				return createErrorResponse(
+					'Order not found',
+					'The order does not exist or has been deleted.',
+					404,
 				)
 			}
 		}
 
-		// Handle all other unexpected errors
-		console.error('Unexpected error creating payment:', {
-			error,
-			message: error?.message,
-			stack: error?.stack,
-		})
-
-		return NextResponse.json(
-			{
-				error: 'Internal server error',
-				message: 'An unexpected error occurred. Please try again or contact support if the issue persists.',
-			},
-			{ status: 500 },
+		return createErrorResponse(
+			'Internal server error',
+			'An unexpected error occurred. Please try again or contact support if the issue persists.',
+			500,
 		)
 	}
 }

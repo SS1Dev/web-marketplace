@@ -222,8 +222,8 @@ export async function GET(req: NextRequest) {
 				if (product && (product as any).sourceCode) {
 					rawSource = (product as any).sourceCode as string
 				}
-			} catch (e) {
-				console.error('Error loading product for sourceCode:', e)
+			} catch {
+				// Ignore errors loading product
 			}
 		}
 
@@ -269,8 +269,7 @@ export async function GET(req: NextRequest) {
 					// ไม่ใช่ URL แปลว่าเป็นซอร์สโค้ดตรง ๆ
 					resolvedSourceCode = rawSource
 				}
-			} catch (error) {
-				console.error('Error fetching source code:', error)
+			} catch {
 				// ถ้า error ให้ fallback เป็นค่าดิบ
 				resolvedSourceCode = rawSource
 			}
@@ -297,7 +296,6 @@ export async function GET(req: NextRequest) {
 			)
 		}
 
-		console.error('Error verifying key:', error)
 		return NextResponse.json(
 			{ error: 'Internal server error', success: false },
 			{ status: 500 },

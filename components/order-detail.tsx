@@ -190,7 +190,7 @@ export function OrderDetail({ order }: OrderDetailProps) {
 												{formatCurrency(item.price * item.quantity)}
 											</p>
 											<p className="text-sm text-muted-foreground">
-												{formatCurrency(item.price)} each
+												{formatCurrency(item.price)}
 											</p>
 										</div>
 									</div>

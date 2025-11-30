@@ -57,7 +57,6 @@ export async function POST(req: NextRequest) {
 			)
 		}
 
-		console.error('Error registering user:', error)
 		return NextResponse.json(
 			{ error: 'Internal server error' },
 			{ status: 500 },

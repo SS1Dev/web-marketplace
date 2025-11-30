@@ -114,7 +114,6 @@ export async function PUT(
 			)
 		}
 
-		console.error('Error updating product:', error)
 		return NextResponse.json(
 			{ error: 'Internal server error' },
 			{ status: 500 },
@@ -142,8 +141,7 @@ export async function DELETE(
 		revalidatePath('/admin/products')
 
 		return NextResponse.json({ success: true })
-	} catch (error) {
-		console.error('Error deleting product:', error)
+	} catch {
 		return NextResponse.json(
 			{ error: 'Internal server error' },
 			{ status: 500 },

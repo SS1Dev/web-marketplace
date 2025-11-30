@@ -90,7 +90,6 @@ export async function PUT(req: NextRequest) {
 			)
 		}
 
-		console.error('Error updating profile:', error)
 		return NextResponse.json(
 			{ error: 'Internal server error' },
 			{ status: 500 },
