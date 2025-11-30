@@ -54,14 +54,63 @@ export function CheckoutForm({ product, userId }: CheckoutFormProps) {
 			const data = await response.json()
 
 			if (!response.ok) {
-				throw new Error(data.error || 'Failed to create order')
+				// Use detailed error message if available
+				const errorMessage = data.message || data.error || 'Failed to create order'
+				
+				// Handle specific error cases
+				if (response.status === 401) {
+					toast({
+						title: 'Authentication Required',
+						description: 'Please log in to create an order',
+						variant: 'destructive',
+					})
+					router.push(`/login?callbackUrl=${encodeURIComponent(window.location.pathname)}`)
+					return
+				}
+
+				if (response.status === 409) {
+					toast({
+						title: 'Order Conflict',
+						description: errorMessage,
+						variant: 'destructive',
+					})
+					// Refresh the page to get updated state
+					setTimeout(() => window.location.reload(), 2000)
+					return
+				}
+
+				// For other errors, show the error message
+				toast({
+					title: 'Error',
+					description: errorMessage,
+					variant: 'destructive',
+				})
+				return
 			}
 
-			router.push(`/orders/${data.orderId}/payment`)
+			// Success - redirect to payment page
+			if (data.orderId) {
+				router.push(`/orders/${data.orderId}/payment`)
+			} else {
+				throw new Error('Order created but no order ID returned')
+			}
 		} catch (error) {
+			console.error('Error creating order:', error)
+			
+			// Handle network errors
+			if (error instanceof TypeError && error.message.includes('fetch')) {
+				toast({
+					title: 'Network Error',
+					description: 'Unable to connect to the server. Please check your internet connection and try again.',
+					variant: 'destructive',
+				})
+				return
+			}
+
+			// Handle other errors
 			toast({
 				title: 'Error',
-				description: error instanceof Error ? error.message : 'Something went wrong',
+				description: error instanceof Error ? error.message : 'Something went wrong. Please try again.',
 				variant: 'destructive',
 			})
 		} finally {

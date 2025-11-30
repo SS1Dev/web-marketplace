@@ -16,15 +16,37 @@ export interface CreatePromptpayChargeParams {
 	description?: string // Product names for description
 }
 
+/**
+ * Create a PromptPay charge following Omise standards
+ * According to Omise PromptPay documentation:
+ * - Amount must be in subunits (satang) - minimum 2000 (THB20.00), maximum 15000000 (THB150,000.00)
+ * - Currency must be THB
+ * - Source type must be 'promptpay'
+ * - Creates source and charge in a single API request (server-side)
+ */
 export async function createPromptpayCharge({
 	amount,
 	orderId,
 	description,
 }: CreatePromptpayChargeParams) {
 	try {
+		// Convert amount to satang (subunits)
+		const amountInSatang = Math.round(amount * 100)
+
+		// Validate amount limits according to Omise PromptPay specifications
+		if (amountInSatang < 2000) {
+			throw new Error('Amount must be at least THB20.00')
+		}
+		if (amountInSatang > 15000000) {
+			throw new Error('Amount must not exceed THB150,000.00')
+		}
+
+		// Create charge with PromptPay source inline (server-side approach)
+		// This follows Omise documentation: "If both the creation and charge of a source
+		// must happen server-side, you can create and charge the source in a single API request"
 		const requestBody: any = {
-			amount: Math.round(amount * 100), // Convert to satang
-			currency: 'thb',
+			amount: amountInSatang,
+			currency: 'THB', // Omise PromptPay requires THB currency
 			source: {
 				type: 'promptpay',
 			},
@@ -48,17 +70,45 @@ export async function createPromptpayCharge({
 		})
 
 		if (!response.ok) {
-			const error = await response.json()
-			throw new Error(error.message || 'Failed to create charge')
+			let errorData
+			try {
+				errorData = await response.json()
+			} catch {
+				// If response is not JSON, create a generic error
+				errorData = {
+					message: `Omise API returned status ${response.status}`,
+					code: response.status,
+				}
+			}
+
+			console.error('Omise API error:', {
+				status: response.status,
+				statusText: response.statusText,
+				error: errorData,
+			})
+
+			// Create error with Omise error details
+			const error = new Error(errorData.message || 'Failed to create charge')
+			;(error as any).omiseError = errorData
+			;(error as any).statusCode = response.status
+			throw error
 		}
 
 		const charge = await response.json()
+
+		// Extract QR code URL according to Omise documentation:
+		// charge.source.scannable_code.image.download_uri
+		const qrCodeUrl = charge.source?.scannable_code?.image?.download_uri || null
 
 		return {
 			id: charge.id,
 			status: charge.status,
 			authorize_uri: charge.authorize_uri,
-			qr_code_url: charge.source?.scannable_code?.image?.download_uri,
+			qr_code_url: qrCodeUrl,
+			expires_at: charge.expires_at, // QR code expiration time (default: 24 hours from creation)
+			// Include additional charge data for webhook reference
+			paid: charge.paid,
+			source_charge_status: charge.source?.charge_status,
 		}
 	} catch (error) {
 		console.error('Omise error:', error)
@@ -76,8 +126,26 @@ export async function getChargeStatus(chargeId: string) {
 		})
 
 		if (!response.ok) {
-			const error = await response.json()
-			throw new Error(error.message || 'Failed to retrieve charge')
+			let errorData
+			try {
+				errorData = await response.json()
+			} catch {
+				errorData = {
+					message: `Omise API returned status ${response.status}`,
+					code: response.status,
+				}
+			}
+
+			console.error('Omise API error (getChargeStatus):', {
+				chargeId,
+				status: response.status,
+				error: errorData,
+			})
+
+			const error = new Error(errorData.message || 'Failed to retrieve charge')
+			;(error as any).omiseError = errorData
+			;(error as any).statusCode = response.status
+			throw error
 		}
 
 		const charge = await response.json()
@@ -86,6 +154,8 @@ export async function getChargeStatus(chargeId: string) {
 			status: charge.status,
 			paid: charge.paid,
 			paid_at: charge.paid_at,
+			expires_at: charge.expires_at, // QR code expiration time
+			source_charge_status: charge.source?.charge_status,
 		}
 	} catch (error) {
 		console.error('Omise error:', error)

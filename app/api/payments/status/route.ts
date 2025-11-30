@@ -40,10 +40,11 @@ export async function GET(req: NextRequest) {
 		}
 
 		// If order is already paid (via webhook), return immediately
-		if (order.status === 'paid') {
+		if (order.status === 'paid' || order.status === 'completed') {
 			return NextResponse.json({
 				status: 'paid',
 				paid: true,
+				orderStatus: order.status,
 				source: 'database', // Status from database (likely updated by webhook)
 			})
 		}
@@ -55,11 +56,44 @@ export async function GET(req: NextRequest) {
 			})
 		}
 
-		// Only check Omise API if order is still pending and refresh is requested
-		// This reduces API calls when webhook is handling updates
-		const charge = refresh || order.status === 'pending'
-			? await getChargeStatus(order.omiseChargeId)
-			: { paid: false, status: order.status }
+		// Fallback strategy: Check Omise API when:
+		// 1. refresh=true is explicitly requested
+		// 2. Order is still pending (always check to ensure status is up-to-date)
+		// 3. Order has been pending for more than 30 seconds (fallback for webhook delays)
+		const orderAge = Date.now() - new Date(order.createdAt).getTime()
+		const shouldCheckOmise = 
+			refresh || 
+			order.status === 'pending' ||
+			(order.status === 'pending' && orderAge > 30000) // 30 seconds fallback
+
+		let charge: {
+			paid: boolean
+			status: string | null
+			expires_at: string | null
+			source_charge_status: string | null
+		} = { paid: false, status: order.status, expires_at: null, source_charge_status: null }
+
+		if (shouldCheckOmise) {
+			try {
+				charge = await getChargeStatus(order.omiseChargeId)
+				console.log('Omise charge status fetched:', {
+					chargeId: order.omiseChargeId,
+					paid: charge.paid,
+					status: charge.status,
+					orderStatus: order.status,
+					reason: refresh ? 'explicit-refresh' : orderAge > 30000 ? 'timeout-fallback' : 'pending-check',
+				})
+			} catch (omiseError: any) {
+				console.error('Failed to fetch charge status from Omise (fallback):', {
+					chargeId: order.omiseChargeId,
+					error: omiseError?.message,
+					fallbackToDatabase: true,
+				})
+				// Fallback to database status if Omise API fails
+				// Don't throw - return database status instead
+				charge = { paid: false, status: order.status, expires_at: null, source_charge_status: null }
+			}
+		}
 
 		// Update order status if paid
 		// IMPORTANT: Only process if paid === true (strict check)
@@ -188,10 +222,25 @@ export async function GET(req: NextRequest) {
 			}
 		}
 
+		// Determine payment status
+		// Check charge.paid first (most reliable from Omise API)
+		// Also check charge.status for 'successful' status
+		const isPaid = charge.paid === true || charge.status === 'successful'
+		const finalStatus = isPaid ? 'paid' : order.status
+
+		// Determine data source
+		let dataSource = 'database'
+		if (shouldCheckOmise && charge.status) {
+			dataSource = refresh ? 'omise-api-refresh' : 'omise-api-fallback'
+		}
+
 		return NextResponse.json({
-			status: charge.paid ? 'paid' : order.status,
-			paid: charge.paid,
-			source: refresh ? 'omise-api' : 'database', // Indicate data source
+			status: finalStatus,
+			paid: isPaid,
+			orderStatus: order.status, // Include order status for additional context
+			chargeStatus: charge.status || null, // Include charge status for debugging
+			expires_at: charge.expires_at || null, // QR code expiration time
+			source: dataSource, // Indicate data source (database, omise-api-refresh, omise-api-fallback)
 		})
 	} catch (error) {
 		console.error('Error checking payment status:', error)

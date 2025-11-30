@@ -5,9 +5,10 @@ import { useRouter } from 'next/navigation'
 import Image from 'next/image'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { useToast } from '@/hooks/use-toast'
-import { Loader2, CheckCircle2, XCircle, X } from 'lucide-react'
+import { Loader2, CheckCircle2, XCircle, X, Clock, AlertCircle } from 'lucide-react'
 import type { Order, OrderItem, Product, User } from '@prisma/client'
 
 interface PaymentPageProps {
@@ -25,6 +26,9 @@ export function PaymentPage({ order }: PaymentPageProps) {
 	const [isLoading, setIsLoading] = useState(true)
 	const [isPolling, setIsPolling] = useState(false)
 	const [isCancelling, setIsCancelling] = useState(false)
+	const [chargeStatus, setChargeStatus] = useState<string | null>(null)
+	const [errorMessage, setErrorMessage] = useState<string | null>(null)
+	const [qrExpiresAt, setQrExpiresAt] = useState<Date | null>(null)
 	const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null)
 	const pollingTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 	const isInitializingRef = useRef(false) // Prevent duplicate initialization
@@ -43,31 +47,128 @@ export function PaymentPage({ order }: PaymentPageProps) {
 		// Use longer polling interval when webhook is enabled (acts as fallback)
 		// Webhook will handle real-time updates, polling is just a backup
 		const pollingInterval = 10000 // Poll every 10 seconds (webhook handles real-time)
+		let pollCount = 0 // Track number of polls for fallback logic
 		
 		pollingIntervalRef.current = setInterval(async () => {
 			try {
-				const response = await fetch(`/api/payments/status?orderId=${order.id}&refresh=true`)
+				pollCount++
+				
+				// After 3 polls (30 seconds), always request refresh from Omise as fallback
+				// This ensures we check Omise directly if webhook is delayed or failed
+				const shouldRefresh = pollCount >= 3 || pollCount % 3 === 0 // Refresh every 3rd poll (every 30 seconds)
+				
+				const response = await fetch(
+					`/api/payments/status?orderId=${order.id}${shouldRefresh ? '&refresh=true' : ''}`
+				)
 				const data = await response.json()
 
-				if (data.status === 'paid' || data.status === 'completed') {
+				console.log('Payment status check:', {
+					pollCount,
+					shouldRefresh,
+					source: data.source,
+					status: data.status,
+					paid: data.paid,
+					orderStatus: data.orderStatus,
+					chargeStatus: data.chargeStatus,
+				})
+
+				// Update charge status and expiration
+				if (data.status) {
+					setChargeStatus(data.status)
+				}
+				if (data.expires_at) {
+					setQrExpiresAt(new Date(data.expires_at))
+				}
+
+				// Handle successful payment
+				// Check multiple conditions: status, paid flag, or order status from response
+				const isPaid = 
+					data.paid === true || 
+					data.status === 'paid' || 
+					data.status === 'completed' ||
+					data.status === 'successful' ||
+					(data.orderStatus && (data.orderStatus === 'paid' || data.orderStatus === 'completed'))
+
+				if (isPaid) {
+					if (pollingIntervalRef.current) {
+						clearInterval(pollingIntervalRef.current)
+						pollingIntervalRef.current = null
+					}
+					if (pollingTimeoutRef.current) {
+						clearTimeout(pollingTimeoutRef.current)
+						pollingTimeoutRef.current = null
+					}
+					setIsPolling(false)
+					
+					console.log('Payment successful, redirecting...', {
+						status: data.status,
+						paid: data.paid,
+						orderStatus: data.orderStatus,
+					})
+					
+					toast({
+						title: 'Payment Successful',
+						description: 'Your payment has been confirmed. Redirecting...',
+					})
+					
+					// Use window.location for more reliable redirect
+					window.location.href = `/orders/${order.id}`
+				}
+
+				// Handle failed, cancelled, or expired payment
+				if (data.status === 'failed' || data.status === 'cancelled' || data.status === 'expired') {
 					if (pollingIntervalRef.current) {
 						clearInterval(pollingIntervalRef.current)
 					}
 					setIsPolling(false)
+					
+					let errorMsg = 'Payment failed or was cancelled. Please try again or contact support.'
+					if (data.status === 'expired') {
+						errorMsg = 'QR code has expired. Please create a new payment request.'
+					} else if (data.status === 'failed') {
+						errorMsg = 'Payment failed. Please check your account balance and try again.'
+					}
+					
+					setErrorMessage(errorMsg)
 					toast({
-						title: 'Payment Successful',
-						description: 'Your payment has been confirmed',
-						variant: 'success',
+						title: 'Payment Status',
+						description: errorMsg,
+						variant: 'destructive',
 					})
-					router.push(`/orders/${order.id}`)
-					router.refresh()
 				}
 			} catch (error) {
 				console.error('Error checking payment status:', error)
+				// Don't stop polling on temporary errors
+				// If error persists, we can add retry logic or fallback to manual refresh
+				
+				// After 5 consecutive errors, try a direct refresh from Omise
+				if (pollCount >= 5 && pollCount % 5 === 0) {
+					console.warn('Multiple polling errors detected, attempting direct Omise refresh')
+					try {
+						const refreshResponse = await fetch(`/api/payments/status?orderId=${order.id}&refresh=true`)
+						const refreshData = await refreshResponse.json()
+						
+						if (refreshData.paid || refreshData.status === 'paid') {
+							// Payment was successful, handle it
+							if (pollingIntervalRef.current) {
+								clearInterval(pollingIntervalRef.current)
+								pollingIntervalRef.current = null
+							}
+							setIsPolling(false)
+							toast({
+								title: 'Payment Successful',
+								description: 'Your payment has been confirmed',
+							})
+							window.location.href = `/orders/${order.id}`
+						}
+					} catch (refreshError) {
+						console.error('Fallback refresh also failed:', refreshError)
+					}
+				}
 			}
 		}, pollingInterval)
 
-		// Stop polling after 10 minutes
+		// Stop polling after 10 minutes (QR code expires in 24 hours, but stop polling earlier)
 		pollingTimeoutRef.current = setTimeout(() => {
 			if (pollingIntervalRef.current) {
 				clearInterval(pollingIntervalRef.current)
@@ -116,7 +217,6 @@ export function PaymentPage({ order }: PaymentPageProps) {
 					toast({
 						title: 'Order Status Updated',
 						description: data.message || `Order is now ${data.status}. Refreshing page...`,
-						variant: 'default',
 					})
 					// Redirect to order detail page after a short delay
 					setTimeout(() => {
@@ -124,18 +224,47 @@ export function PaymentPage({ order }: PaymentPageProps) {
 					}, 1500)
 					return
 				}
-				throw new Error(data.error || 'Failed to initialize payment')
+
+				// Handle validation errors (amount limits, etc.)
+				const errorMsg = data.error || 'Failed to initialize payment'
+				setErrorMessage(errorMsg)
+				toast({
+					title: 'Payment Error',
+					description: errorMsg,
+					variant: 'destructive',
+				})
+				throw new Error(errorMsg)
 			}
 
+			// Set QR code URL and charge status
 			setQrCodeUrl(data.qrCodeUrl)
+			if (data.status) {
+				setChargeStatus(data.status)
+			}
+
+			// Set QR code expiration from API response or calculate default (24 hours from now)
+			if (data.expires_at) {
+				setQrExpiresAt(new Date(data.expires_at))
+			} else {
+				// Fallback: Calculate QR code expiration (24 hours from now according to Omise PromptPay)
+				const expiresAt = new Date()
+				expiresAt.setHours(expiresAt.getHours() + 24)
+				setQrExpiresAt(expiresAt)
+			}
+
+			setErrorMessage(null)
 			setIsLoading(false)
 			startPolling()
 		} catch (error) {
-			toast({
-				title: 'Error',
-				description: error instanceof Error ? error.message : 'Failed to initialize payment',
-				variant: 'destructive',
-			})
+			const errorMsg = error instanceof Error ? error.message : 'Failed to initialize payment'
+			if (!errorMsg.includes('Order Status Updated')) {
+				setErrorMessage(errorMsg)
+				toast({
+					title: 'Error',
+					description: errorMsg,
+					variant: 'destructive',
+				})
+			}
 			setIsLoading(false)
 			isInitializingRef.current = false // Reset on error to allow retry
 		}
@@ -148,14 +277,36 @@ export function PaymentPage({ order }: PaymentPageProps) {
 		}
 		hasMountedRef.current = true
 
-		// Only run once on mount
-		if (order.omiseChargeId && order.qrCodeUrl) {
-			// Payment already initialized
-			setQrCodeUrl(order.qrCodeUrl)
-			setIsLoading(false)
-			if (order.status === 'pending') {
-				startPolling()
+			// Only run once on mount
+			// Check if order is already paid - if so, redirect immediately
+			if (order.status === 'paid' || order.status === 'completed') {
+				console.log('Order already paid, redirecting...', {
+					orderId: order.id,
+					status: order.status,
+				})
+				toast({
+					title: 'Payment Confirmed',
+					description: 'Your payment has been confirmed',
+				})
+				// Use window.location for more reliable redirect
+				window.location.href = `/orders/${order.id}`
+				return
 			}
+
+			if (order.omiseChargeId && order.qrCodeUrl) {
+				// Payment already initialized
+				setQrCodeUrl(order.qrCodeUrl)
+				setChargeStatus('pending') // Default to pending if we have QR code
+				setIsLoading(false)
+				
+				// Calculate QR code expiration (24 hours from order creation, or use expires_at if available)
+				const expiresAt = new Date(order.createdAt)
+				expiresAt.setHours(expiresAt.getHours() + 24)
+				setQrExpiresAt(expiresAt)
+
+				if (order.status === 'pending') {
+					startPolling()
+				}
 		} else if (!isInitializingRef.current && !qrCodeUrl && !order.omiseChargeId) {
 			// Only initialize if:
 			// - Not already initializing
@@ -267,34 +418,132 @@ export function PaymentPage({ order }: PaymentPageProps) {
 					</div>
 
 					<div className="space-y-4">
-						<h3 className="text-lg font-semibold">Scan QR Code to Pay</h3>
+						<div className="flex items-center justify-between">
+							<h3 className="text-lg font-semibold">PromptPay Payment</h3>
+							{chargeStatus && (
+								<Badge variant={chargeStatus === 'pending' ? 'default' : chargeStatus === 'successful' ? 'default' : 'destructive'}>
+									{chargeStatus === 'pending' && 'Pending'}
+									{chargeStatus === 'successful' && 'Successful'}
+									{chargeStatus === 'failed' && 'Failed'}
+									{chargeStatus === 'expired' && 'Expired'}
+								</Badge>
+							)}
+						</div>
+
+						{errorMessage && (
+							<div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4">
+								<div className="flex items-start space-x-3">
+									<AlertCircle className="h-5 w-5 text-destructive mt-0.5" />
+									<div className="flex-1">
+										<p className="text-sm font-medium text-destructive">Payment Error</p>
+										<p className="text-sm text-muted-foreground mt-1">{errorMessage}</p>
+									</div>
+								</div>
+							</div>
+						)}
+
+						{/* Amount limits info - Omise PromptPay: min THB 20, max THB 150,000 */}
+						{(order.totalAmount < 20 || order.totalAmount > 150000) && (
+							<div className="rounded-lg border border-yellow-500/50 bg-yellow-500/10 p-3">
+								<div className="flex items-start space-x-2">
+									<AlertCircle className="h-4 w-4 text-yellow-600 mt-0.5" />
+									<p className="text-xs text-yellow-800">
+										PromptPay supports amounts between THB 20.00 and THB 150,000.00
+									</p>
+								</div>
+							</div>
+						)}
+
 						{isLoading ? (
-							<div className="flex items-center justify-center py-12">
+							<div className="flex flex-col items-center justify-center py-12 space-y-3">
 								<Loader2 className="h-8 w-8 animate-spin text-primary" />
+								<p className="text-sm text-muted-foreground">Creating payment request...</p>
 							</div>
 						) : qrCodeUrl ? (
 							<div className="flex flex-col items-center space-y-4">
-								<div className="relative h-64 w-64 rounded-lg border bg-white p-4">
+								<div className="relative h-64 w-64 rounded-lg border-2 border-primary/20 bg-white p-4 shadow-lg">
 									<Image
 										src={qrCodeUrl}
-										alt="Promptpay QR Code"
+										alt="PromptPay QR Code"
 										fill
 										className="object-contain"
 										unoptimized
 									/>
 								</div>
-								<p className="text-sm text-muted-foreground text-center">
-									Scan this QR code with your banking app to complete the payment
-								</p>
+
+								{/* QR Code Expiration */}
+								{qrExpiresAt && (
+									<div className="flex items-center justify-center space-x-2 rounded-lg border bg-muted/30 px-3 py-2">
+										<Clock className="h-4 w-4 text-muted-foreground" />
+										<span className="text-sm text-muted-foreground">
+											QR code expires:{' '}
+											<span className="font-medium">
+												{(() => {
+													const hoursRemaining = Math.max(0, Math.floor((qrExpiresAt.getTime() - Date.now()) / (1000 * 60 * 60)))
+													const minutesRemaining = Math.max(0, Math.floor(((qrExpiresAt.getTime() - Date.now()) % (1000 * 60 * 60)) / (1000 * 60)))
+													if (hoursRemaining > 0) {
+														return `${hoursRemaining}h ${minutesRemaining}m`
+													}
+													return `${minutesRemaining}m`
+												})()}
+											</span>
+										</span>
+									</div>
+								)}
+
+								{/* Payment Status */}
 								{isPolling && (
-									<div className="flex flex-col items-center space-y-2 text-sm text-muted-foreground">
+									<div className="flex flex-col items-center space-y-2 rounded-lg border bg-primary/5 p-4">
 										<div className="flex items-center space-x-2">
-											<Loader2 className="h-4 w-4 animate-spin" />
-											<span>Waiting for payment confirmation...</span>
+											<Loader2 className="h-4 w-4 animate-spin text-primary" />
+											<span className="text-sm font-medium">Waiting for payment confirmation...</span>
 										</div>
-										<p className="text-xs text-muted-foreground/70">
-											The system will automatically detect your payment via webhook
+										<p className="text-xs text-muted-foreground text-center">
+											The system will automatically detect your payment. Please keep this page open.
 										</p>
+										<Button
+											variant="outline"
+											size="sm"
+											onClick={async () => {
+												try {
+													setIsLoading(true)
+													const response = await fetch(`/api/payments/status?orderId=${order.id}&refresh=true`)
+													const data = await response.json()
+													
+													if (data.paid || data.status === 'paid') {
+														toast({
+															title: 'Payment Confirmed',
+															description: 'Your payment has been confirmed',
+														})
+														window.location.href = `/orders/${order.id}`
+													} else {
+														toast({
+															title: 'Payment Status',
+															description: `Status: ${data.status || 'Pending'}. The system will continue checking automatically.`,
+														})
+													}
+												} catch (error) {
+													toast({
+														title: 'Error',
+														description: 'Failed to check payment status. Please try again.',
+														variant: 'destructive',
+													})
+												} finally {
+													setIsLoading(false)
+												}
+											}}
+											className="mt-2"
+											disabled={isLoading}
+										>
+											{isLoading ? (
+												<>
+													<Loader2 className="mr-2 h-3 w-3 animate-spin" />
+													Checking...
+												</>
+											) : (
+												'Check Payment Status Now'
+											)}
+										</Button>
 									</div>
 								)}
 							</div>
@@ -307,9 +556,11 @@ export function PaymentPage({ order }: PaymentPageProps) {
 								<Button
 									onClick={() => {
 										isInitializingRef.current = false
+										setErrorMessage(null)
 										initializePayment()
 									}}
 									className="mt-4"
+									variant="outline"
 								>
 									Retry
 								</Button>
@@ -318,7 +569,30 @@ export function PaymentPage({ order }: PaymentPageProps) {
 					</div>
 
 					{order.status === 'pending' && (
-						<div className="border-t pt-4">
+						<div className="border-t pt-4 space-y-3">
+							{/* Show retry button if QR code failed to load or expired */}
+							{(!qrCodeUrl || chargeStatus === 'expired' || chargeStatus === 'failed') && (
+								<Button
+									onClick={() => {
+										isInitializingRef.current = false
+										setErrorMessage(null)
+										setChargeStatus(null)
+										initializePayment()
+									}}
+									disabled={isLoading}
+									className="w-full"
+									variant="outline"
+								>
+									{isLoading ? (
+										<>
+											<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+											Creating Payment...
+										</>
+									) : (
+										'Create New Payment Request'
+									)}
+								</Button>
+							)}
 							<Button
 								variant="destructive"
 								onClick={handleCancel}
