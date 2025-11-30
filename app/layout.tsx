@@ -7,8 +7,8 @@ import { Toaster } from '@/components/ui/toaster'
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-	title: 'S1Dev Marketplace - Buy Game Codes & Keys',
-	description: 'Your trusted marketplace for game codes, keys, and digital items',
+	title: 'S1Dev Shop - Buy Game Codes & Keys',
+	description: 'Your trusted Shop for game codes, keys, and digital items',
 }
 
 export default function RootLayout({
