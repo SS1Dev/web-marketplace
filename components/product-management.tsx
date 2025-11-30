@@ -321,7 +321,7 @@ export function ProductManagement({ products: initialProducts }: ProductManageme
 							Add Product
 						</Button>
 					</DialogTrigger>
-					<DialogContent>
+					<DialogContent className="max-h-[90vh] flex flex-col">
 						<DialogHeader>
 							<DialogTitle>
 								{editingProduct ? 'Edit Product' : 'Add Product'}
@@ -332,7 +332,8 @@ export function ProductManagement({ products: initialProducts }: ProductManageme
 									: 'Create a new product'}
 							</DialogDescription>
 						</DialogHeader>
-						<form onSubmit={handleSubmit} className="space-y-4">
+						<div className="overflow-y-auto flex-1 px-1">
+							<form onSubmit={handleSubmit} className="space-y-4" id="product-form">
 							<div className="space-y-2">
 								<Label htmlFor="name">Name</Label>
 								<Input
@@ -521,17 +522,18 @@ export function ProductManagement({ products: initialProducts }: ProductManageme
 								/>
 								<Label htmlFor="isActive">Active</Label>
 							</div>
-							<DialogFooter>
-								<Button
-									type="button"
-									variant="outline"
-									onClick={() => setIsDialogOpen(false)}
-								>
-									Cancel
-								</Button>
-								<Button type="submit">Save</Button>
-							</DialogFooter>
-						</form>
+							</form>
+						</div>
+						<DialogFooter>
+							<Button
+								type="button"
+								variant="outline"
+								onClick={() => setIsDialogOpen(false)}
+							>
+								Cancel
+							</Button>
+							<Button type="submit" form="product-form">Save</Button>
+						</DialogFooter>
 					</DialogContent>
 				</Dialog>
 			</div>
