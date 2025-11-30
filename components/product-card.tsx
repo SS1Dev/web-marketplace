@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import Image from 'next/image'
+import Link from 'next/link'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -9,6 +10,7 @@ import { formatCurrency } from '@/lib/utils'
 import type { Product } from '@prisma/client'
 import { ShoppingCart, Download } from 'lucide-react'
 import { useRouter } from 'next/navigation'
+import { useSession } from 'next-auth/react'
 
 interface ProductCardProps {
 	product: Product
@@ -16,10 +18,16 @@ interface ProductCardProps {
 
 export function ProductCard({ product }: ProductCardProps) {
 	const router = useRouter()
+	const { data: session } = useSession()
 	const [isDescriptionOpen, setIsDescriptionOpen] = useState(false)
 	const [isSourceCodeOpen, setIsSourceCodeOpen] = useState(false)
 
 	const handleBuy = () => {
+		if (!session) {
+			// Redirect to login with callback URL
+			router.push(`/login?callbackUrl=${encodeURIComponent(`/products/${product.id}/checkout`)}`)
+			return
+		}
 		router.push(`/products/${product.id}/checkout`)
 	}
 
@@ -40,18 +48,22 @@ export function ProductCard({ product }: ProductCardProps) {
 		<>
 			<Card className="flex flex-col hover:shadow-lg transition-shadow">
 				{product.image && (
-					<div className="relative h-48 w-full overflow-hidden rounded-t-lg">
+					<Link href={`/products/${product.id}`} className="relative block h-48 w-full overflow-hidden rounded-t-lg">
 						<Image
 							src={product.image}
-							alt={product.name}
+							alt={`${product.name} - ${product.category || 'Product'}`}
 							fill
-							className="object-cover"
+							className="object-cover transition-transform hover:scale-105"
 							unoptimized
 						/>
-					</div>
+					</Link>
 				)}
 				<CardHeader>
-					<CardTitle className="line-clamp-2">{product.name}</CardTitle>
+					<Link href={`/products/${product.id}`}>
+						<CardTitle className="line-clamp-2 hover:text-primary transition-colors cursor-pointer">
+							{product.name}
+						</CardTitle>
+					</Link>
 					<CardDescription 
 						className={`line-clamp-2 ${product.description ? 'cursor-pointer hover:text-primary transition-colors' : ''}`}
 						onClick={handleDescriptionClick}
@@ -85,7 +97,10 @@ export function ProductCard({ product }: ProductCardProps) {
 				{product.price === 0 && (product.type === 'script' || (product as any).sourceCode) ? (
 					<Button
 						className="w-full"
-						onClick={handleGetFree}
+						onClick={(e) => {
+							e.stopPropagation()
+							handleGetFree()
+						}}
 					>
 						<Download className="mr-2 h-4 w-4" />
 						Get Free
@@ -93,7 +108,10 @@ export function ProductCard({ product }: ProductCardProps) {
 				) : (
 					<Button
 						className="w-full"
-						onClick={handleBuy}
+						onClick={(e) => {
+							e.stopPropagation()
+							handleBuy()
+						}}
 						disabled={product.type !== 'key' && product.stock === 0}
 					>
 						<ShoppingCart className="mr-2 h-4 w-4" />

@@ -2,7 +2,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { redirect } from 'next/navigation'
 import { prisma } from '@/lib/prisma'
-import { Navbar } from '@/components/navbar'
+import { AdminLayout } from '@/components/admin-layout'
 import { ProductManagement } from '@/components/product-management'
 
 export default async function AdminProductsPage() {
@@ -17,12 +17,9 @@ export default async function AdminProductsPage() {
 	})
 
 	return (
-		<div className="min-h-screen bg-background">
-			<Navbar />
-			<div className="container mx-auto px-4 py-8">
-				<ProductManagement products={products} />
-			</div>
-		</div>
+		<AdminLayout>
+			<ProductManagement products={products} />
+		</AdminLayout>
 	)
 }
 

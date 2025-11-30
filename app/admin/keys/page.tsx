@@ -2,7 +2,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { redirect } from 'next/navigation'
 import { prisma } from '@/lib/prisma'
-import { Navbar } from '@/components/navbar'
+import { AdminLayout } from '@/components/admin-layout'
 import { KeysManagement } from '@/components/keys-management'
 
 export default async function AdminKeysPage() {
@@ -74,12 +74,9 @@ export default async function AdminKeysPage() {
 		})
 
 	return (
-		<div className="min-h-screen bg-background">
-			<Navbar />
-			<div className="container mx-auto px-4 py-8">
-				<KeysManagement orders={filteredOrders} />
-			</div>
-		</div>
+		<AdminLayout>
+			<KeysManagement orders={filteredOrders} />
+		</AdminLayout>
 	)
 }
 

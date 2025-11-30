@@ -13,8 +13,8 @@ const createProductSchema = z.object({
 	stock: z.number().int().min(0).optional(),
 	category: z.string().optional(),
 	type: z.enum(['key', 'id', 'script', 'other']).default('other'),
-	expireDays: z.string().optional(),
-	sourceCode: z.string().optional(),
+	expireDays: z.string().optional().nullable(),
+	sourceCode: z.string().optional().nullable(),
 	image: z
 		.union([
 			z.string().url(),
@@ -57,8 +57,8 @@ export async function POST(req: NextRequest) {
 			productData.expireDays = null
 		}
 
-		// Keep sourceCode for 'key' or 'script' type products
-		if ((validatedData.type === 'key' || validatedData.type === 'script') && validatedData.sourceCode) {
+		// Keep sourceCode only for 'script' type products
+		if (validatedData.type === 'script' && validatedData.sourceCode) {
 			productData.sourceCode = validatedData.sourceCode
 		}
 

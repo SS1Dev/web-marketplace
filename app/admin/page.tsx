@@ -2,7 +2,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { redirect } from 'next/navigation'
 import { prisma } from '@/lib/prisma'
-import { Navbar } from '@/components/navbar'
+import { AdminLayout } from '@/components/admin-layout'
 import { AdminDashboard } from '@/components/admin-dashboard'
 
 export default async function AdminPage() {
@@ -88,18 +88,15 @@ export default async function AdminPage() {
 	)
 
 	return (
-		<div className="min-h-screen bg-background">
-			<Navbar />
-			<div className="container mx-auto px-4 py-8">
-				<AdminDashboard
-					totalOrders={totalOrders}
-					totalRevenue={totalRevenue._sum.totalAmount || 0}
-					pendingOrders={pendingOrders}
-					recentOrders={recentOrdersWithItems}
-					topProducts={topProductsWithDetails}
-				/>
-			</div>
-		</div>
+		<AdminLayout>
+			<AdminDashboard
+				totalOrders={totalOrders}
+				totalRevenue={totalRevenue._sum.totalAmount || 0}
+				pendingOrders={pendingOrders}
+				recentOrders={recentOrdersWithItems}
+				topProducts={topProductsWithDetails}
+			/>
+		</AdminLayout>
 	)
 }
 

@@ -1,8 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, Suspense } from 'react'
 import { signIn } from 'next-auth/react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -10,12 +10,16 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { useToast } from '@/hooks/use-toast'
 
-export default function LoginPage() {
+function LoginForm() {
 	const router = useRouter()
+	const searchParams = useSearchParams()
 	const { toast } = useToast()
 	const [email, setEmail] = useState('')
 	const [password, setPassword] = useState('')
 	const [isLoading, setIsLoading] = useState(false)
+
+	// Get callback URL from query params
+	const callbackUrl = searchParams?.get('callbackUrl') || '/products'
 
 	const handleSubmit = async (e: React.FormEvent) => {
 		e.preventDefault()
@@ -35,7 +39,7 @@ export default function LoginPage() {
 					variant: 'destructive',
 				})
 			} else {
-				router.push('/products')
+				router.push(callbackUrl)
 				router.refresh()
 			}
 		} catch (error) {
@@ -53,7 +57,7 @@ export default function LoginPage() {
 		setIsLoading(true)
 		try {
 			const result = await signIn('discord', {
-				callbackUrl: '/products',
+				callbackUrl: callbackUrl,
 				redirect: false,
 			})
 
@@ -73,7 +77,7 @@ export default function LoginPage() {
 					})
 				}
 			} else if (result?.ok) {
-				router.push('/products')
+				router.push(callbackUrl)
 				router.refresh()
 			}
 		} catch (error) {
@@ -170,3 +174,20 @@ export default function LoginPage() {
 	)
 }
 
+export default function LoginPage() {
+	return (
+		<Suspense fallback={
+			<div className="flex min-h-screen items-center justify-center bg-background p-4">
+				<Card className="w-full max-w-md">
+					<CardContent className="py-12">
+						<div className="text-center">
+							<p className="text-muted-foreground">Loading...</p>
+						</div>
+					</CardContent>
+				</Card>
+			</div>
+		}>
+			<LoginForm />
+		</Suspense>
+	)
+}

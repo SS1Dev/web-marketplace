@@ -1,0 +1,246 @@
+---
+alwaysApply: true
+---
+# =========================================================
+# E-COMMERCE SEO + AEO RULESET (Cursor AI)
+# Tailored for: Roblox Scripts, Game Keys, Digital Items, Tools, Codes
+# Version: 1.0
+# =========================================================
+
+
+# ---------------------------------------------------------
+# GLOBAL RULES FOR ROBLOX DIGITAL GOODS
+# ---------------------------------------------------------
+Global Writing Rules:
+
+1. Tone of Voice:
+   - Professional, clear, gamer-friendly, trustworthy.
+   - Avoid illegal, exploitative, or ToS-violating claims.
+   - Focus on benefits, features, safety, and reliability.
+
+2. Core Principles:
+   - Use simple, direct explanations.
+   - Make content easy to scan: bullets, tables, short paragraphs.
+   - Highlight value, safety, compatibility, and usage instructions.
+   - Never promise bypassing Roblox security or anti-cheat.
+
+3. User Intent:
+   - Focus on purchase intent:
+     * “Which script should I buy?”
+     * “What features does this script/key offer?”
+     * “Is this tool safe and reliable?”
+   - Support post-purchase intent:
+     * Setup guides
+     * Installation steps
+     * Troubleshooting
+
+4. Compliance:
+   - No claims of hacking, exploiting vulnerabilities, or malicious intent.
+   - Only describe features as “automation”, “enhancement”, “QoL features”, “game utilities”.
+   - Emphasize legitimacy and safe usage.
+
+
+# ---------------------------------------------------------
+# SEO RULES (Roblox Digital Marketplace)
+# ---------------------------------------------------------
+SEO Rules:
+
+1. Keyword Placement:
+   - Use primary keyword in:
+     * H1
+     * Intro paragraph
+     * 1–2 H2 headings
+     * Meta title & meta description
+   - Use natural variations (LSI keywords):
+     * roblox script
+     * roblox key
+     * gamepass code
+     * roblox item tools
+     * executor tools
+     * automation script
+     * roblox game utility
+
+2. Product Page SEO:
+   Each product page must include:
+   - H1: Product Name (exact)
+   - Short summary explaining what the product does
+   - Key features (bulleted)
+   - Benefits for players
+   - Supported games / compatibility
+   - How to use (steps)
+   - Safety notice / disclaimer
+   - FAQs
+   - Related products link block
+
+3. Category Page SEO:
+   - Write 100–150 word intro explaining the category:
+     * Scripts category
+     * Tools category
+     * Executor keys
+     * Game codes
+   - Include sub-category highlights (3–4 sections)
+   - Optimize using strong H2 titles.
+
+4. Technical SEO:
+   - ALT text: Describe item/script + game name.
+   - URL slugs: Use clean, SEO-friendly slugs.
+     Example: /roblox-auto-farm-script /roblox-executor-key
+
+5. Trust/Authority:
+   - Mention version updates
+   - Security verified statements
+   - Compatibility lists
+
+6. Recommended Content Add-ons:
+   - Comparison table (Standard vs Premium Script)
+   - Version changelog
+   - Supported Games List
+
+
+# ---------------------------------------------------------
+# AEO RULES (Answer Engine Optimization)
+# ---------------------------------------------------------
+AEO Rules:
+
+1. Start pages with a direct, extractable 2–4 sentence answer:
+   - What the item/tool is
+   - What it does
+   - Who it is best for
+
+2. Structure content using Q&A formats:
+   - “What is this script?”
+   - “What features does it include?”
+   - “Is it safe to use?”
+   - “How do I activate the key?”
+   - “Is this tool compatible with all executors?”
+
+3. Keep answers concise:
+   - 40–80 word blocks
+   - Bullet points where possible
+
+4. Provide technical facts:
+   - Supported executors (e.g., Synapse X, Fluxus, Delta)
+   - Game compatibility
+   - Update frequency
+   - File format (.lua, .txt, .key)
+
+5. Avoid vague marketing fluff—AI models prefer specifics.
+
+6. Use micro-guides:
+   - How to install
+   - How to use
+   - Troubleshooting
+
+
+# ---------------------------------------------------------
+# PRODUCT DESCRIPTION RULES
+# ---------------------------------------------------------
+Product Description Structure (Auto Apply):
+
+1. H1: Product Name  
+2. Short summary (2–4 sentences)
+3. Key Features (bullets)
+4. Main Benefits (bullets)
+5. Supported Games
+6. Compatibility:
+   - Executors
+   - Platforms (PC/Mobile)
+7. How It Works (step-by-step)
+8. What’s Included in the Purchase
+9. Safety & Usage Notice
+10. Requirements (if any)
+11. FAQs (5–7 questions)
+12. Related Products / Recommended Tools
+
+Features Format:
+- Start features with action verbs:
+  * Automates…
+  * Enhances…
+  * Unlocks…
+  * Provides…
+  * Improves…
+
+Benefits Format:
+- Explain real player value:
+  * Saves time
+  * Easier grinding
+  * Faster leveling
+  * Improved user experience
+
+Explicitly avoid:
+- “Ban-proof”
+- “Undetectable”
+- “Hack/exploit vulnerabilities”
+
+
+# ---------------------------------------------------------
+# STRUCTURED DATA RULES
+# ---------------------------------------------------------
+Schema Rules:
+
+1. Use JSON-LD only.
+2. Use these schema types:
+   - Product
+   - Offer
+   - Review
+   - AggregateRating
+   - FAQPage
+   - BreadcrumbList
+
+3. Required fields for Product schema:
+   - name
+   - description
+   - image
+   - sku
+   - brand (use store/creator name)
+   - offers (price, currency, availability)
+   - version (if applicable)
+   - operatingSystem (Windows/Android/iOS)
+   - applicationCategory (GameUtility / Script / Software)
+
+4. Validate all schema:
+   https://validator.schema.org/
+
+
+# ---------------------------------------------------------
+# BLOG/CONTENT RULES
+# ---------------------------------------------------------
+Blog Article Format:
+
+1. SEO + AEO summary at the top.
+2. Use buyer-intent topics:
+   - Best Roblox Auto Farm Scripts 2025
+   - How to Choose the Right Roblox Executor Key
+   - Top Roblox Tools for Grinding Levels
+   - Safe Ways to Use Roblox Scripts
+   - Differences Between Free vs Premium Scripts
+
+3. Include:
+   - Lists
+   - Comparison tables
+   - Step-by-step guides
+   - Links to products
+
+4. Add disclaimers for safety:
+   - “Use responsibly and follow Roblox community guidelines.”
+
+
+# ---------------------------------------------------------
+# PRE-PUBLISH CHECKLIST (AUTO APPLY)
+# ---------------------------------------------------------
+Before finalizing content:
+
+- [ ] Clear summary for AEO
+- [ ] SEO headings optimized (H1/H2/H3)
+- [ ] Features + benefits listed
+- [ ] Bullet points ≥ 30%
+- [ ] Compatibility details added
+- [ ] Safety notice present
+- [ ] Internal links to product/category pages
+- [ ] Schema recommendations included
+- [ ] No ToS-violating claims
+- [ ] Content must feel expert, not AI-generated
+
+# =========================================================
+# END OF RULESET
+# =========================================================

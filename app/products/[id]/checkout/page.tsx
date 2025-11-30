@@ -4,6 +4,28 @@ import { redirect } from 'next/navigation'
 import { prisma } from '@/lib/prisma'
 import { Navbar } from '@/components/navbar'
 import { CheckoutForm } from '@/components/checkout-form'
+import type { Metadata } from 'next'
+
+const siteUrl = process.env.NEXTAUTH_URL || 'https://s1dev-shop.com'
+
+interface CheckoutPageProps {
+	params: { id: string }
+}
+
+export async function generateMetadata({ params }: CheckoutPageProps): Promise<Metadata> {
+	const product = await prisma.product.findUnique({
+		where: { id: params.id },
+	})
+
+	return {
+		title: `Checkout - ${product?.name || 'Product'}`,
+		description: `Complete your purchase of ${product?.name || 'this product'} at S1Dev Shop. Secure payment with PromptPay.`,
+		robots: {
+			index: false,
+			follow: false,
+		},
+	}
+}
 
 export default async function CheckoutPage({
 	params,
@@ -13,7 +35,7 @@ export default async function CheckoutPage({
 	const session = await getServerSession(authOptions)
 
 	if (!session) {
-		redirect('/login')
+		redirect(`/login?callbackUrl=${encodeURIComponent(`/products/${params.id}/checkout`)}`)
 	}
 
 	const product = await prisma.product.findUnique({

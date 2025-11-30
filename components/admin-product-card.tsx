@@ -5,6 +5,8 @@ import Image from 'next/image'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Switch } from '@/components/ui/switch'
+import { Label } from '@/components/ui/label'
 import { formatCurrency } from '@/lib/utils'
 import type { Product } from '@prisma/client'
 import { Edit, Trash2 } from 'lucide-react'
@@ -13,10 +15,13 @@ interface AdminProductCardProps {
 	product: Product
 	onEdit: () => void
 	onDelete: () => void
+	onToggleActive: (productId: string, isActive: boolean) => Promise<void>
 }
 
-export function AdminProductCard({ product, onEdit, onDelete }: AdminProductCardProps) {
+export function AdminProductCard({ product, onEdit, onDelete, onToggleActive }: AdminProductCardProps) {
 	const [isDescriptionOpen, setIsDescriptionOpen] = useState(false)
+	const [isActive, setIsActive] = useState(product.isActive)
+	const [isToggling, setIsToggling] = useState(false)
 
 	const handleDescriptionClick = (e: React.MouseEvent) => {
 		e.stopPropagation()
@@ -33,6 +38,20 @@ export function AdminProductCard({ product, onEdit, onDelete }: AdminProductCard
 	const handleDelete = (e: React.MouseEvent) => {
 		e.stopPropagation()
 		onDelete()
+	}
+
+	const handleToggleActive = async (checked: boolean) => {
+		setIsToggling(true)
+		const previousValue = isActive
+		setIsActive(checked)
+		try {
+			await onToggleActive(product.id, checked)
+		} catch (error) {
+			// Revert on error
+			setIsActive(previousValue)
+		} finally {
+			setIsToggling(false)
+		}
 	}
 
 	return (
@@ -78,8 +97,17 @@ export function AdminProductCard({ product, onEdit, onDelete }: AdminProductCard
 								Category: {product.category}
 							</div>
 						)}
-						<div className="text-xs text-muted-foreground">
-							Status: {product.isActive ? 'Active' : 'Inactive'}
+						<div className="flex items-center justify-between pt-2 border-t">
+							<Label htmlFor={`active-${product.id}`} className="text-xs text-muted-foreground cursor-pointer">
+								{isActive ? 'Active' : 'Inactive'}
+							</Label>
+							<Switch
+								id={`active-${product.id}`}
+								checked={isActive}
+								onCheckedChange={handleToggleActive}
+								disabled={isToggling}
+								onClick={(e) => e.stopPropagation()}
+							/>
 						</div>
 					</div>
 				</CardContent>

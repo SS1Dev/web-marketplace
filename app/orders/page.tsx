@@ -3,7 +3,7 @@ import { authOptions } from '@/lib/auth'
 import { redirect } from 'next/navigation'
 import { prisma } from '@/lib/prisma'
 import { Navbar } from '@/components/navbar'
-import { OrdersList } from '@/components/orders-list'
+import { OrderHistory } from '@/components/order-history'
 
 export default async function OrdersPage() {
 	const session = await getServerSession(authOptions)
@@ -44,8 +44,11 @@ export default async function OrdersPage() {
 		<div className="min-h-screen bg-background">
 			<Navbar />
 			<div className="container mx-auto px-4 py-8">
-				<h1 className="mb-8 text-3xl font-bold">My Orders</h1>
-				<OrdersList orders={ordersWithItems} />
+				<div className="mb-8">
+					<h1 className="text-3xl font-bold">My Orders</h1>
+					<p className="text-muted-foreground mt-1">View and manage your order history</p>
+				</div>
+				<OrderHistory orders={ordersWithItems} />
 			</div>
 		</div>
 	)
