@@ -107,12 +107,13 @@ async function handleChargeComplete(event: any) {
 	})
 
 	// Check if payment is successful
-	// Check from charge.status, charge.paid, and charge.source.charge_status
+	// MUST have paid === true AND status must be successful
+	// This ensures we only process successful payments
 	const isSuccessful = 
-		(isPaid && chargeStatus === 'successful') ||
-		(sourceChargeStatus === 'successful' && isPaid)
+		isPaid === true && 
+		(chargeStatus === 'successful' || sourceChargeStatus === 'successful')
 
-	// Handle successful payment
+	// Handle successful payment - ONLY if paid is true
 	if (isSuccessful) {
 		// Get orderId from charge metadata
 		const orderId = charge.metadata?.orderId
@@ -266,13 +267,16 @@ async function handleChargeComplete(event: any) {
 		return
 	}
 
-	// Handle failed payment
-	// Check from charge.status or charge.source.charge_status
+	// Handle failed/cancelled payment
+	// If paid is NOT true, the payment did not succeed - must cancel order
+	// Also check for explicit failed status
 	const isFailed = 
+		isPaid !== true || // Most important: if not paid, it failed
 		chargeStatus === 'failed' ||
-		sourceChargeStatus === 'failed' ||
-		(!isPaid && chargeStatus !== 'pending' && chargeStatus !== 'successful' && sourceChargeStatus !== 'pending' && sourceChargeStatus !== 'successful')
+		sourceChargeStatus === 'failed'
 
+	// Cancel order if payment failed or not paid
+	// IMPORTANT: If paid is not true, payment did not succeed - cancel the order
 	if (isFailed) {
 		const orderId = charge.metadata?.orderId
 
@@ -297,7 +301,7 @@ async function handleChargeComplete(event: any) {
 			return
 		}
 
-		// Only update if still pending
+		// Only cancel if still pending (don't cancel already paid orders)
 		if (order.status === 'pending') {
 			await prisma.order.update({
 				where: { id: order.id },
@@ -306,9 +310,20 @@ async function handleChargeComplete(event: any) {
 				},
 			})
 
-			console.log(`Order ${order.id} marked as cancelled (charge failed)`)
+			const reason = isPaid !== true 
+				? 'payment not completed (paid !== true)'
+				: 'charge status is failed'
+			
+			console.log(`Order ${order.id} marked as cancelled: ${reason}`)
+		} else {
+			console.log(`Order ${order.id} already processed (status: ${order.status}), skipping cancellation`)
 		}
+		return
 	}
+
+	// If we reach here, payment is not successful and not explicitly failed
+	// This shouldn't happen often, but log it for debugging
+	console.log(`Charge ${charge.id} is in an unclear state: paid=${isPaid}, status=${chargeStatus}, sourceChargeStatus=${sourceChargeStatus}`)
 
 	// Get orderId from charge metadata
 	const orderId = charge.metadata?.orderId

@@ -62,7 +62,8 @@ export async function GET(req: NextRequest) {
 			: { paid: false, status: order.status }
 
 		// Update order status if paid
-		if (charge.paid && order.status === 'pending') {
+		// IMPORTANT: Only process if paid === true (strict check)
+		if (charge.paid === true && order.status === 'pending') {
 			await prisma.order.update({
 				where: { id: orderId },
 				data: {
