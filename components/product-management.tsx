@@ -23,7 +23,7 @@ interface ProductManagementProps {
 export function ProductManagement({ products: initialProducts }: ProductManagementProps) {
 	const router = useRouter()
 	const { toast } = useToast()
-	const [products] = useState(initialProducts)
+	const [products, setProducts] = useState(initialProducts)
 	const [isDialogOpen, setIsDialogOpen] = useState(false)
 	const [editingProduct, setEditingProduct] = useState<Product | null>(null)
 	const [searchQuery, setSearchQuery] = useState('')
@@ -172,6 +172,8 @@ export function ProductManagement({ products: initialProducts }: ProductManageme
 				throw new Error(data.error || 'Failed to save product')
 			}
 
+			const savedProduct = await response.json()
+
 			toast({
 				title: 'Success',
 				description: editingProduct
@@ -181,6 +183,17 @@ export function ProductManagement({ products: initialProducts }: ProductManageme
 			})
 
 			setIsDialogOpen(false)
+			
+			// Update local state immediately
+			if (editingProduct) {
+				setProducts((prev) =>
+					prev.map((p) => (p.id === editingProduct.id ? savedProduct : p))
+				)
+			} else {
+				setProducts((prev) => [savedProduct, ...prev])
+			}
+
+			// Revalidate pages
 			router.refresh()
 		} catch (error) {
 			toast({
@@ -212,6 +225,10 @@ export function ProductManagement({ products: initialProducts }: ProductManageme
 				variant: 'success',
 			})
 
+			// Update local state immediately
+			setProducts((prev) => prev.filter((p) => p.id !== productId))
+
+			// Revalidate pages
 			router.refresh()
 		} catch (error) {
 			toast({

@@ -7,6 +7,9 @@ import { ProductGrid } from '@/components/product-grid'
 import { StructuredData } from '@/components/seo/structured-data'
 import type { Metadata } from 'next'
 
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
 const siteUrl = process.env.NEXTAUTH_URL || 'https://s1dev-shop.com'
 
 // ตาม Rules SEO: Meta title, description, keywords

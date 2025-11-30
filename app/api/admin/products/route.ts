@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
+import { revalidatePath } from 'next/cache'
 
 export const dynamic = 'force-dynamic'
 
@@ -65,6 +66,10 @@ export async function POST(req: NextRequest) {
 		const product = await prisma.product.create({
 			data: productData,
 		})
+
+		// Revalidate products pages
+		revalidatePath('/products')
+		revalidatePath('/admin/products')
 
 		return NextResponse.json(product)
 	} catch (error) {
