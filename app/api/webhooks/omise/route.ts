@@ -95,10 +95,25 @@ async function handleChargeCreate(event: any) {
 async function handleChargeComplete(event: any) {
 	const charge = event.data
 
-	console.log(`Processing charge.complete for ${charge.id}, status: ${charge.status}, paid: ${charge.paid}`)
+	// Get charge status from multiple sources
+	const chargeStatus = charge.status
+	const sourceChargeStatus = charge.source?.charge_status
+	const isPaid = charge.paid
+
+	console.log(`Processing charge.complete for ${charge.id}`, {
+		status: chargeStatus,
+		sourceChargeStatus: sourceChargeStatus,
+		paid: isPaid,
+	})
+
+	// Check if payment is successful
+	// Check from charge.status, charge.paid, and charge.source.charge_status
+	const isSuccessful = 
+		(isPaid && chargeStatus === 'successful') ||
+		(sourceChargeStatus === 'successful' && isPaid)
 
 	// Handle successful payment
-	if (charge.paid && charge.status === 'successful') {
+	if (isSuccessful) {
 		// Get orderId from charge metadata
 		const orderId = charge.metadata?.orderId
 
@@ -252,7 +267,13 @@ async function handleChargeComplete(event: any) {
 	}
 
 	// Handle failed payment
-	if (charge.status === 'failed' || (!charge.paid && charge.status !== 'pending' && charge.status !== 'successful')) {
+	// Check from charge.status or charge.source.charge_status
+	const isFailed = 
+		chargeStatus === 'failed' ||
+		sourceChargeStatus === 'failed' ||
+		(!isPaid && chargeStatus !== 'pending' && chargeStatus !== 'successful' && sourceChargeStatus !== 'pending' && sourceChargeStatus !== 'successful')
+
+	if (isFailed) {
 		const orderId = charge.metadata?.orderId
 
 		if (!orderId) {
