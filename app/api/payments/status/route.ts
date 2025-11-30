@@ -17,6 +17,7 @@ export async function GET(req: NextRequest) {
 
 		const searchParams = req.nextUrl.searchParams
 		const orderId = searchParams.get('orderId')
+		const refresh = searchParams.get('refresh') === 'true' // Force refresh from Omise
 
 		if (!orderId) {
 			return NextResponse.json(
@@ -25,7 +26,7 @@ export async function GET(req: NextRequest) {
 			)
 		}
 
-		// Get order
+		// Get order (refresh from database to get latest status from webhook)
 		const order = await prisma.order.findUnique({
 			where: { id: orderId },
 		})
@@ -38,6 +39,15 @@ export async function GET(req: NextRequest) {
 			return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 		}
 
+		// If order is already paid (via webhook), return immediately
+		if (order.status === 'paid') {
+			return NextResponse.json({
+				status: 'paid',
+				paid: true,
+				source: 'database', // Status from database (likely updated by webhook)
+			})
+		}
+
 		if (!order.omiseChargeId) {
 			return NextResponse.json({
 				status: order.status,
@@ -45,8 +55,11 @@ export async function GET(req: NextRequest) {
 			})
 		}
 
-		// Check Omise charge status
-		const charge = await getChargeStatus(order.omiseChargeId)
+		// Only check Omise API if order is still pending and refresh is requested
+		// This reduces API calls when webhook is handling updates
+		const charge = refresh || order.status === 'pending'
+			? await getChargeStatus(order.omiseChargeId)
+			: { paid: false, status: order.status }
 
 		// Update order status if paid
 		if (charge.paid && order.status === 'pending') {
@@ -177,6 +190,7 @@ export async function GET(req: NextRequest) {
 		return NextResponse.json({
 			status: charge.paid ? 'paid' : order.status,
 			paid: charge.paid,
+			source: refresh ? 'omise-api' : 'database', // Indicate data source
 		})
 	} catch (error) {
 		console.error('Error checking payment status:', error)

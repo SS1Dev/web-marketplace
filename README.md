@@ -208,6 +208,7 @@ npm run dev
 ### Payments
 - `POST /api/payments/create` - สร้าง Payment และ QR Code
 - `GET /api/payments/status` - ตรวจสอบสถานะการชำระเงิน
+- `POST /api/webhooks/omise` - Webhook endpoint สำหรับรับการแจ้งเตือนจาก Omise
 
 ### Admin
 - `POST /api/admin/products` - สร้าง Product

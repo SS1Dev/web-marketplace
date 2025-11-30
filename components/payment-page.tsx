@@ -39,9 +39,14 @@ export function PaymentPage({ order }: PaymentPageProps) {
 		}
 
 		setIsPolling(true)
+		
+		// Use longer polling interval when webhook is enabled (acts as fallback)
+		// Webhook will handle real-time updates, polling is just a backup
+		const pollingInterval = 10000 // Poll every 10 seconds (webhook handles real-time)
+		
 		pollingIntervalRef.current = setInterval(async () => {
 			try {
-				const response = await fetch(`/api/payments/status?orderId=${order.id}`)
+				const response = await fetch(`/api/payments/status?orderId=${order.id}&refresh=true`)
 				const data = await response.json()
 
 				if (data.status === 'paid' || data.status === 'completed') {
@@ -60,7 +65,7 @@ export function PaymentPage({ order }: PaymentPageProps) {
 			} catch (error) {
 				console.error('Error checking payment status:', error)
 			}
-		}, 3000) // Poll every 3 seconds
+		}, pollingInterval)
 
 		// Stop polling after 10 minutes
 		pollingTimeoutRef.current = setTimeout(() => {
@@ -267,9 +272,14 @@ export function PaymentPage({ order }: PaymentPageProps) {
 									Scan this QR code with your banking app to complete the payment
 								</p>
 								{isPolling && (
-									<div className="flex items-center space-x-2 text-sm text-muted-foreground">
-										<Loader2 className="h-4 w-4 animate-spin" />
-										<span>Waiting for payment confirmation...</span>
+									<div className="flex flex-col items-center space-y-2 text-sm text-muted-foreground">
+										<div className="flex items-center space-x-2">
+											<Loader2 className="h-4 w-4 animate-spin" />
+											<span>Waiting for payment confirmation...</span>
+										</div>
+										<p className="text-xs text-muted-foreground/70">
+											The system will automatically detect your payment via webhook
+										</p>
 									</div>
 								)}
 							</div>
