@@ -2,7 +2,6 @@
 
 import { useState } from 'react'
 import Image from 'next/image'
-import Link from 'next/link'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -48,22 +47,20 @@ export function ProductCard({ product }: ProductCardProps) {
 		<>
 			<Card className="flex flex-col hover:shadow-lg transition-shadow">
 				{product.image && (
-					<Link href={`/products/${product.id}`} className="relative block h-48 w-full overflow-hidden rounded-t-lg">
+					<div className="relative block h-48 w-full overflow-hidden rounded-t-lg">
 						<Image
 							src={product.image}
 							alt={`${product.name} - ${product.category || 'Product'}`}
 							fill
-							className="object-cover transition-transform hover:scale-105"
+							className="object-cover"
 							unoptimized
 						/>
-					</Link>
+					</div>
 				)}
 				<CardHeader>
-					<Link href={`/products/${product.id}`}>
-						<CardTitle className="line-clamp-2 hover:text-primary transition-colors cursor-pointer">
-							{product.name}
-						</CardTitle>
-					</Link>
+					<CardTitle className="line-clamp-2">
+						{product.name}
+					</CardTitle>
 					<CardDescription 
 						className={`line-clamp-2 ${product.description ? 'cursor-pointer hover:text-primary transition-colors' : ''}`}
 						onClick={handleDescriptionClick}

@@ -60,7 +60,7 @@ export default async function ProductsPage() {
 				'@type': 'Product',
 				name: product.name,
 				description: product.description || product.name,
-				url: `${siteUrl}/products/${product.id}`,
+				url: `${siteUrl}/products`,
 				image: product.image || `${siteUrl}/placeholder-product.jpg`,
 				offers: {
 					'@type': 'Offer',
