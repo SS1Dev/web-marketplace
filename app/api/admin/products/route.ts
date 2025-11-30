@@ -57,8 +57,8 @@ export async function POST(req: NextRequest) {
 			productData.expireDays = null
 		}
 
-		// Keep sourceCode only for 'script' type products
-		if (validatedData.type === 'script' && validatedData.sourceCode) {
+		// Keep sourceCode for 'script' or 'key' type products
+		if ((validatedData.type === 'script' || validatedData.type === 'key') && validatedData.sourceCode) {
 			productData.sourceCode = validatedData.sourceCode
 		}
 

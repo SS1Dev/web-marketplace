@@ -147,8 +147,8 @@ export function ProductManagement({ products: initialProducts }: ProductManageme
 				requestBody.expireDays = null
 			}
 
-			// Only include sourceCode if type is 'script'
-			if (formData.type === 'script') {
+			// Include sourceCode for 'script' or 'key' type products
+			if (formData.type === 'script' || formData.type === 'key') {
 				requestBody.sourceCode = formData.sourceCode.trim() || null
 			} else {
 				requestBody.sourceCode = null
@@ -365,7 +365,8 @@ export function ProductManagement({ products: initialProducts }: ProductManageme
 											}
 										}
 										
-										if (value !== 'script') {
+										// Clear sourceCode only if changing to types that don't support it (other/id)
+										if (value !== 'script' && value !== 'key') {
 											updates.sourceCode = ''
 										}
 										
@@ -426,26 +427,40 @@ export function ProductManagement({ products: initialProducts }: ProductManageme
 							</div>
 							
 							{formData.type === 'key' && (
-								<div className="space-y-2">
-									<Label htmlFor="expireDays">Expiration</Label>
-									<Select
-										value={formData.expireDays}
-										onValueChange={(value) =>
-											setFormData({ ...formData, expireDays: value })
-										}
-										required
-									>
-										<SelectTrigger>
-											<SelectValue placeholder="Select expiration" />
-										</SelectTrigger>
-										<SelectContent>
-											<SelectItem value="1D">1 Day</SelectItem>
-											<SelectItem value="7D">7 Days</SelectItem>
-											<SelectItem value="30D">30 Days</SelectItem>
-											<SelectItem value="Never">Never</SelectItem>
-										</SelectContent>
-									</Select>
-								</div>
+								<>
+									<div className="space-y-2">
+										<Label htmlFor="expireDays">Expiration</Label>
+										<Select
+											value={formData.expireDays}
+											onValueChange={(value) =>
+												setFormData({ ...formData, expireDays: value })
+											}
+											required
+										>
+											<SelectTrigger>
+												<SelectValue placeholder="Select expiration" />
+											</SelectTrigger>
+											<SelectContent>
+												<SelectItem value="1D">1 Day</SelectItem>
+												<SelectItem value="7D">7 Days</SelectItem>
+												<SelectItem value="30D">30 Days</SelectItem>
+												<SelectItem value="Never">Never</SelectItem>
+											</SelectContent>
+										</Select>
+									</div>
+									<div className="space-y-2">
+										<Label htmlFor="sourceCode">Source Code</Label>
+										<textarea
+											id="sourceCode"
+											className="flex min-h-[120px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+											placeholder="Paste source code or key information for this product"
+											value={formData.sourceCode}
+											onChange={(e) =>
+												setFormData({ ...formData, sourceCode: e.target.value })
+											}
+										/>
+									</div>
+								</>
 							)}
 							
 							{formData.type === 'script' && (

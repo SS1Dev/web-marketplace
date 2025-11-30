@@ -62,8 +62,8 @@ export async function PUT(
 			if (validatedData.type !== 'key') {
 				productData.expireDays = null
 			}
-			// Only keep sourceCode if changing to script type
-			if (validatedData.type !== 'script') {
+			// Only keep sourceCode if changing to script or key type
+			if (validatedData.type !== 'script' && validatedData.type !== 'key') {
 				productData.sourceCode = null
 			}
 		}
@@ -80,15 +80,15 @@ export async function PUT(
 			// If type is being changed to non-key and expireDays is not provided, clear it
 			productData.expireDays = null
 		}
-		// Handle sourceCode - only for script type
+		// Handle sourceCode - for script or key type
 		if (validatedData.sourceCode !== undefined) {
 			const finalTypeForSource = validatedData.type !== undefined ? validatedData.type : currentProduct.type
-			if (finalTypeForSource === 'script') {
+			if (finalTypeForSource === 'script' || finalTypeForSource === 'key') {
 				productData.sourceCode = validatedData.sourceCode || null
 			} else {
 				productData.sourceCode = null
 			}
-		} else if (validatedData.type !== undefined && validatedData.type !== 'script') {
+		} else if (validatedData.type !== undefined && validatedData.type !== 'script' && validatedData.type !== 'key') {
 			productData.sourceCode = null
 		}
 		// If type is not being changed and expireDays is not provided, don't update it
