@@ -80,13 +80,14 @@ export async function POST(req: NextRequest) {
 		}
 
 		// Create order (omiseChargeId will be null initially, set later when payment is created)
+		// Don't explicitly set omiseChargeId to avoid unique constraint issues with null values
 		const order = await prisma.order.create({
 			data: {
 				userId,
 				userData,
 				totalAmount: product.price * quantity,
 				status: 'pending',
-				omiseChargeId: null, // Explicitly set to null
+				// omiseChargeId will default to null from schema
 			},
 		})
 
@@ -102,12 +103,25 @@ export async function POST(req: NextRequest) {
 		})
 
 		return NextResponse.json({ orderId: order.id })
-	} catch (error) {
+	} catch (error: any) {
 		if (error instanceof z.ZodError) {
 			return NextResponse.json(
 				{ error: 'Invalid request data', details: error.errors },
 				{ status: 400 },
 			)
+		}
+
+		// Handle unique constraint violations
+		if (error?.code === 'P2002') {
+			console.error('Unique constraint violation when creating order:', error)
+			// If it's a unique constraint on omiseChargeId, it shouldn't happen for new orders
+			// But handle it gracefully anyway
+			if (error?.meta?.target?.includes('omiseChargeId')) {
+				return NextResponse.json(
+					{ error: 'Order creation conflict. Please try again.' },
+					{ status: 409 },
+				)
+			}
 		}
 
 		console.error('Error creating order:', error)

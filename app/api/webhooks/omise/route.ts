@@ -67,6 +67,7 @@ async function handleChargeCreate(event: any) {
 	}
 
 	// Update order with charge ID and QR code URL if not already set
+	// Use updateMany to prevent unique constraint violations and race conditions
 	const updateData: any = {}
 
 	if (!order.omiseChargeId) {
@@ -78,12 +79,21 @@ async function handleChargeCreate(event: any) {
 	}
 
 	if (Object.keys(updateData).length > 0) {
-		await prisma.order.update({
-			where: { id: order.id },
+		// Use updateMany with condition to atomically update only if omiseChargeId is still null
+		// This prevents unique constraint violations if webhook is called multiple times
+		const updateResult = await prisma.order.updateMany({
+			where: {
+				id: order.id,
+				omiseChargeId: null, // Only update if omiseChargeId is still null
+			},
 			data: updateData,
 		})
 
-		console.log(`Order ${order.id} updated with charge ${charge.id} and QR code URL`)
+		if (updateResult.count > 0) {
+			console.log(`Order ${order.id} updated with charge ${charge.id} and QR code URL`)
+		} else {
+			console.log(`Order ${order.id} already has charge ID (omiseChargeId already set)`)
+		}
 	} else {
 		console.log(`Order ${order.id} already has charge ID and QR code URL`)
 	}
