@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { useToast } from '@/hooks/use-toast'
-import { Loader2, CheckCircle2, XCircle, X, Clock, AlertCircle } from 'lucide-react'
+import { Loader2, CheckCircle2, XCircle, X, Clock, AlertCircle, QrCode, Shield, CreditCard, ShoppingCart } from 'lucide-react'
 import type { Order, OrderItem, Product, User } from '@prisma/client'
 
 interface PaymentPageProps {
@@ -181,7 +181,7 @@ export function PaymentPage({ order }: PaymentPageProps) {
 			}
 			setIsPolling(false)
 		}, 600000)
-	}, [order.id, router, toast])
+	}, [order.id, order.status, toast])
 
 	const initializePayment = useCallback(async () => {
 		// Prevent duplicate calls
@@ -393,218 +393,310 @@ export function PaymentPage({ order }: PaymentPageProps) {
 	}
 
 	return (
-		<div className="mx-auto max-w-4xl">
-			<Card>
-				<CardHeader>
-					<CardTitle>Payment</CardTitle>
-					<CardDescription>
-						Order #{order.id.slice(0, 8)} - {formatDate(order.createdAt)}
-					</CardDescription>
-				</CardHeader>
-				<CardContent className="space-y-6">
-					<div className="space-y-2">
-						<h3 className="text-lg font-semibold">Order Summary</h3>
-						<div className="space-y-3">
-							{order.items.map((item) => {
-								const productData = item.productData as any
-								return (
-									<div key={item.id} className="flex items-center gap-3">
-										{productData?.image && (
-											<div className="relative h-12 w-12 flex-shrink-0 overflow-hidden rounded">
+		<div className="mx-auto max-w-6xl px-4 py-8">
+			<div className="mb-8">
+				<h1 className="text-3xl font-bold tracking-tight mb-2">Payment</h1>
+				<p className="text-muted-foreground">
+					Order #{order.id.slice(0, 8)} • {formatDate(order.createdAt)}
+				</p>
+			</div>
+
+			<div className="grid gap-6 lg:grid-cols-3">
+				{/* Order Summary */}
+				<div className="lg:col-span-1">
+					<Card className="sticky top-8">
+						<CardHeader>
+							<CardTitle className="flex items-center gap-2">
+								<ShoppingCart className="h-5 w-5" />
+								Order Summary
+							</CardTitle>
+						</CardHeader>
+						<CardContent className="space-y-4">
+							<div className="space-y-3">
+								{order.items.map((item) => {
+									const productData = item.productData as any
+									return (
+										<div key={item.id} className="flex items-center gap-3 rounded-lg border bg-card p-3">
+											{productData?.image && (
+												<div className="relative h-14 w-14 flex-shrink-0 overflow-hidden rounded-md">
+													<Image
+														src={productData.image}
+														alt={productData?.name || 'Product'}
+														fill
+														className="object-cover"
+														unoptimized
+													/>
+												</div>
+											)}
+											<div className="flex-1 min-w-0">
+												<p className="font-medium text-sm truncate">
+													{productData?.name || 'Unknown Product'}
+												</p>
+												<p className="text-xs text-muted-foreground">Quantity: {item.quantity}</p>
+											</div>
+											<span className="font-semibold text-sm shrink-0">
+												{formatCurrency(item.price * item.quantity)}
+											</span>
+										</div>
+									)
+								})}
+							</div>
+							<div className="border-t pt-4 space-y-2">
+								<div className="flex justify-between text-sm">
+									<span className="text-muted-foreground">Subtotal</span>
+									<span>{formatCurrency(order.totalAmount)}</span>
+								</div>
+								<div className="flex justify-between text-lg font-bold border-t pt-2">
+									<span>Total</span>
+									<span className="text-primary">{formatCurrency(order.totalAmount)}</span>
+								</div>
+							</div>
+						</CardContent>
+					</Card>
+				</div>
+
+				{/* Payment Section */}
+				<div className="lg:col-span-2">
+					<Card>
+						<CardHeader>
+							<div className="flex items-center justify-between">
+								<div>
+									<CardTitle className="flex items-center gap-2">
+										<CreditCard className="h-5 w-5" />
+										PromptPay Payment
+									</CardTitle>
+									<CardDescription className="mt-1">
+										Scan the QR code with your banking app to complete payment
+									</CardDescription>
+								</div>
+								{chargeStatus && (
+									<Badge 
+										variant={
+											chargeStatus === 'pending' 
+												? 'default' 
+												: chargeStatus === 'successful' || chargeStatus === 'paid'
+												? 'default'
+												: 'destructive'
+										}
+										className="shrink-0"
+									>
+										{chargeStatus === 'pending' && 'Pending'}
+										{(chargeStatus === 'successful' || chargeStatus === 'paid') && 'Successful'}
+										{chargeStatus === 'failed' && 'Failed'}
+										{chargeStatus === 'expired' && 'Expired'}
+									</Badge>
+								)}
+							</div>
+						</CardHeader>
+						<CardContent className="space-y-6">
+
+							{errorMessage && (
+								<div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4">
+									<div className="flex items-start space-x-3">
+										<AlertCircle className="h-5 w-5 text-destructive mt-0.5 shrink-0" />
+										<div className="flex-1">
+											<p className="text-sm font-medium text-destructive">Payment Error</p>
+											<p className="text-sm text-muted-foreground mt-1">{errorMessage}</p>
+										</div>
+									</div>
+								</div>
+							)}
+
+							{/* Amount limits info - Omise PromptPay: min THB 20, max THB 150,000 */}
+							{(order.totalAmount < 20 || order.totalAmount > 150000) && (
+								<div className="rounded-lg border border-yellow-500/50 bg-yellow-500/10 p-4">
+									<div className="flex items-start space-x-3">
+										<AlertCircle className="h-5 w-5 text-yellow-600 mt-0.5 shrink-0" />
+										<p className="text-sm text-yellow-800">
+											PromptPay supports amounts between THB 20.00 and THB 150,000.00
+										</p>
+									</div>
+								</div>
+							)}
+
+							{isLoading ? (
+								<div className="flex flex-col items-center justify-center py-16 space-y-4">
+									<div className="relative">
+										<div className="absolute inset-0 rounded-full bg-primary/20 animate-ping" />
+										<Loader2 className="relative h-12 w-12 animate-spin text-primary" />
+									</div>
+									<div className="text-center space-y-1">
+										<p className="font-medium">Creating payment request...</p>
+										<p className="text-sm text-muted-foreground">Please wait a moment</p>
+									</div>
+								</div>
+							) : qrCodeUrl ? (
+								<div className="space-y-6">
+									{/* QR Code Display */}
+									<div className="flex flex-col items-center space-y-4">
+										<div className="relative">
+											<div className="absolute -inset-4 rounded-2xl bg-primary/10 blur-xl" />
+											<div className="relative h-80 w-80 rounded-2xl border-4 border-primary/20 bg-white p-6 shadow-2xl">
 												<Image
-													src={productData.image}
-													alt={productData?.name || 'Product'}
+													src={qrCodeUrl}
+													alt="PromptPay QR Code"
 													fill
-													className="object-cover"
+													className="object-contain rounded-lg"
 													unoptimized
 												/>
 											</div>
+										</div>
+
+										<div className="text-center space-y-2">
+											<div className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-4 py-2">
+												<QrCode className="h-4 w-4 text-primary" />
+												<span className="text-sm font-medium">Scan with your banking app</span>
+											</div>
+										</div>
+
+										{/* QR Code Expiration */}
+										{qrExpiresAt && (
+											<div className="flex items-center justify-center gap-2 rounded-lg border bg-muted/50 px-4 py-3">
+												<Clock className="h-4 w-4 text-muted-foreground" />
+												<span className="text-sm text-muted-foreground">
+													Expires in:{' '}
+													<span className="font-semibold text-foreground">
+														{(() => {
+															const hoursRemaining = Math.max(0, Math.floor((qrExpiresAt.getTime() - Date.now()) / (1000 * 60 * 60)))
+															const minutesRemaining = Math.max(0, Math.floor(((qrExpiresAt.getTime() - Date.now()) % (1000 * 60 * 60)) / (1000 * 60)))
+															if (hoursRemaining > 0) {
+																return `${hoursRemaining}h ${minutesRemaining}m`
+															}
+															return `${minutesRemaining}m`
+														})()}
+													</span>
+												</span>
+											</div>
 										)}
-										<div className="flex-1">
-											<span className="font-medium">
-												{productData?.name || 'Unknown Product'} x {item.quantity}
-											</span>
+									</div>
+
+									{/* Payment Status */}
+									{isPolling && (
+										<div className="rounded-lg border bg-primary/5 p-6">
+											<div className="flex flex-col items-center space-y-3 text-center">
+												<div className="flex items-center gap-3">
+													<Loader2 className="h-5 w-5 animate-spin text-primary" />
+													<span className="font-medium">Waiting for payment confirmation...</span>
+												</div>
+												<p className="text-sm text-muted-foreground max-w-md">
+													The system is automatically checking payment status every 10 seconds. Please keep this page open.
+												</p>
+											</div>
 										</div>
-										<span className="font-semibold">{formatCurrency(item.price * item.quantity)}</span>
-									</div>
-								)
-							})}
-						</div>
-						<div className="flex justify-between border-t pt-2 text-lg font-bold">
-							<span>Total:</span>
-							<span className="text-primary">{formatCurrency(order.totalAmount)}</span>
-						</div>
-					</div>
-
-					<div className="space-y-4">
-						<div className="flex items-center justify-between">
-							<h3 className="text-lg font-semibold">PromptPay Payment</h3>
-							{chargeStatus && (
-								<Badge variant={chargeStatus === 'pending' ? 'default' : chargeStatus === 'successful' ? 'default' : 'destructive'}>
-									{chargeStatus === 'pending' && 'Pending'}
-									{chargeStatus === 'successful' && 'Successful'}
-									{chargeStatus === 'failed' && 'Failed'}
-									{chargeStatus === 'expired' && 'Expired'}
-								</Badge>
-							)}
-						</div>
-
-						{errorMessage && (
-							<div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4">
-								<div className="flex items-start space-x-3">
-									<AlertCircle className="h-5 w-5 text-destructive mt-0.5" />
-									<div className="flex-1">
-										<p className="text-sm font-medium text-destructive">Payment Error</p>
-										<p className="text-sm text-muted-foreground mt-1">{errorMessage}</p>
-									</div>
-								</div>
-							</div>
-						)}
-
-						{/* Amount limits info - Omise PromptPay: min THB 20, max THB 150,000 */}
-						{(order.totalAmount < 20 || order.totalAmount > 150000) && (
-							<div className="rounded-lg border border-yellow-500/50 bg-yellow-500/10 p-3">
-								<div className="flex items-start space-x-2">
-									<AlertCircle className="h-4 w-4 text-yellow-600 mt-0.5" />
-									<p className="text-xs text-yellow-800">
-										PromptPay supports amounts between THB 20.00 and THB 150,000.00
-									</p>
-								</div>
-							</div>
-						)}
-
-						{isLoading ? (
-							<div className="flex flex-col items-center justify-center py-12 space-y-3">
-								<Loader2 className="h-8 w-8 animate-spin text-primary" />
-								<p className="text-sm text-muted-foreground">Creating payment request...</p>
-							</div>
-						) : qrCodeUrl ? (
-							<div className="flex flex-col items-center space-y-4">
-								<div className="relative h-64 w-64 rounded-lg border-2 border-primary/20 bg-white p-4 shadow-lg">
-									<Image
-										src={qrCodeUrl}
-										alt="PromptPay QR Code"
-										fill
-										className="object-contain"
-										unoptimized
-									/>
-								</div>
-
-								{/* QR Code Expiration */}
-								{qrExpiresAt && (
-									<div className="flex items-center justify-center space-x-2 rounded-lg border bg-muted/30 px-3 py-2">
-										<Clock className="h-4 w-4 text-muted-foreground" />
-										<span className="text-sm text-muted-foreground">
-											QR code expires:{' '}
-											<span className="font-medium">
-												{(() => {
-													const hoursRemaining = Math.max(0, Math.floor((qrExpiresAt.getTime() - Date.now()) / (1000 * 60 * 60)))
-													const minutesRemaining = Math.max(0, Math.floor(((qrExpiresAt.getTime() - Date.now()) % (1000 * 60 * 60)) / (1000 * 60)))
-													if (hoursRemaining > 0) {
-														return `${hoursRemaining}h ${minutesRemaining}m`
-													}
-													return `${minutesRemaining}m`
-												})()}
-											</span>
-										</span>
-									</div>
-								)}
-
-								{/* Payment Status */}
-								{isPolling && (
-									<div className="flex flex-col items-center space-y-2 rounded-lg border bg-primary/5 p-4">
-										<div className="flex items-center space-x-2">
-											<Loader2 className="h-4 w-4 animate-spin text-primary" />
-											<span className="text-sm font-medium">Waiting for payment confirmation...</span>
-										</div>
-										<p className="text-xs text-muted-foreground text-center">
-											The system is automatically checking payment status every 10 seconds. Please keep this page open.
-										</p>
-									</div>
-								)}
-							</div>
-						) : (
-							<div className="text-center py-12">
-								<XCircle className="mx-auto h-12 w-12 text-destructive" />
-								<p className="mt-4 text-muted-foreground">
-									Failed to load QR code. Please try again.
-								</p>
-								<Button
-									onClick={() => {
-										isInitializingRef.current = false
-										setErrorMessage(null)
-										initializePayment()
-									}}
-									className="mt-4"
-									variant="outline"
-								>
-									Retry
-								</Button>
-							</div>
-						)}
-					</div>
-
-					{order.status === 'cancelled' && (
-						<div className="border-t pt-4">
-							<div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4">
-								<div className="flex items-start space-x-3">
-									<XCircle className="h-5 w-5 text-destructive mt-0.5" />
-									<div className="flex-1">
-										<p className="text-sm font-medium text-destructive">Order Cancelled</p>
-										<p className="text-sm text-muted-foreground mt-1">
-											This order has been cancelled. You cannot proceed with payment.
-										</p>
-									</div>
-								</div>
-							</div>
-							<Button
-								onClick={() => router.push(`/orders/${order.id}`)}
-								className="w-full mt-4"
-								variant="outline"
-							>
-								View Order Details
-							</Button>
-						</div>
-					)}
-
-					{order.status === 'pending' && (
-						<div className="border-t pt-4 space-y-3">
-							{/* Show retry button if QR code failed to load or expired */}
-							{(!qrCodeUrl || chargeStatus === 'expired' || chargeStatus === 'failed') && (
-								<Button
-									onClick={() => {
-										isInitializingRef.current = false
-										setErrorMessage(null)
-										setChargeStatus(null)
-										initializePayment()
-									}}
-									disabled={isLoading}
-									className="w-full"
-									variant="outline"
-								>
-									{isLoading ? (
-										<>
-											<Loader2 className="mr-2 h-4 w-4 animate-spin" />
-											Creating Payment...
-										</>
-									) : (
-										'Create New Payment Request'
 									)}
-								</Button>
+
+									{/* Security Notice */}
+									<div className="flex items-start gap-3 rounded-lg border bg-muted/30 p-4">
+										<Shield className="h-5 w-5 text-primary shrink-0 mt-0.5" />
+										<div className="flex-1 space-y-1">
+											<p className="text-sm font-medium">Secure Payment</p>
+											<p className="text-xs text-muted-foreground">
+												Your payment is processed securely through Omise. No card information is stored on our servers.
+											</p>
+										</div>
+									</div>
+								</div>
+							) : (
+								<div className="flex flex-col items-center justify-center py-16 space-y-4 text-center">
+									<div className="rounded-full bg-destructive/10 p-4">
+										<XCircle className="h-12 w-12 text-destructive" />
+									</div>
+									<div className="space-y-2">
+										<p className="font-medium">Failed to load QR code</p>
+										<p className="text-sm text-muted-foreground">
+											Please try again or contact support if the issue persists
+										</p>
+									</div>
+									<Button
+										onClick={() => {
+											isInitializingRef.current = false
+											setErrorMessage(null)
+											initializePayment()
+										}}
+										variant="outline"
+										className="mt-4"
+									>
+										<Loader2 className="mr-2 h-4 w-4" />
+										Retry
+									</Button>
+								</div>
 							)}
-							<Button
-								variant="destructive"
-								onClick={handleCancel}
-								disabled={isCancelling || isLoading}
-								className="w-full"
-							>
-								<X className="mr-2 h-4 w-4" />
-								{isCancelling ? 'Cancelling...' : 'Cancel Order'}
-							</Button>
-						</div>
-					)}
-				</CardContent>
-			</Card>
+
+							{order.status === 'cancelled' && (
+								<div className="border-t pt-6 space-y-4">
+									<div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4">
+										<div className="flex items-start space-x-3">
+											<XCircle className="h-5 w-5 text-destructive mt-0.5 shrink-0" />
+											<div className="flex-1">
+												<p className="text-sm font-medium text-destructive">Order Cancelled</p>
+												<p className="text-sm text-muted-foreground mt-1">
+													This order has been cancelled. You cannot proceed with payment.
+												</p>
+											</div>
+										</div>
+									</div>
+									<Button
+										onClick={() => router.push(`/orders/${order.id}`)}
+										className="w-full"
+										variant="outline"
+									>
+										View Order Details
+									</Button>
+								</div>
+							)}
+
+							{order.status === 'pending' && (
+								<div className="border-t pt-6 space-y-3">
+									{/* Show retry button if QR code failed to load or expired */}
+									{(!qrCodeUrl || chargeStatus === 'expired' || chargeStatus === 'failed') && (
+										<Button
+											onClick={() => {
+												isInitializingRef.current = false
+												setErrorMessage(null)
+												setChargeStatus(null)
+												initializePayment()
+											}}
+											disabled={isLoading}
+											className="w-full"
+											variant="outline"
+											size="lg"
+										>
+											{isLoading ? (
+												<>
+													<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+													Creating Payment...
+												</>
+											) : (
+												<>
+													<QrCode className="mr-2 h-4 w-4" />
+													Create New Payment Request
+												</>
+											)}
+										</Button>
+									)}
+									<Button
+										variant="destructive"
+										onClick={handleCancel}
+										disabled={isCancelling || isLoading}
+										className="w-full"
+										size="lg"
+									>
+										<X className="mr-2 h-4 w-4" />
+										{isCancelling ? (
+											<>
+												<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+												Cancelling...
+											</>
+										) : (
+											'Cancel Order'
+										)}
+									</Button>
+								</div>
+							)}
+						</CardContent>
+					</Card>
+				</div>
+			</div>
 		</div>
 	)
 }

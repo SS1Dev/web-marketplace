@@ -3,14 +3,17 @@
 import { useState } from 'react'
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Badge } from '@/components/ui/badge'
 import { formatCurrency } from '@/lib/utils'
 import type { Product } from '@prisma/client'
 import { useToast } from '@/hooks/use-toast'
-import { Loader2 } from 'lucide-react'
+import { Loader2, ShoppingCart, Package, Calendar, Tag, ArrowRight, CheckCircle2 } from 'lucide-react'
 
 interface CheckoutFormProps {
 	product: Product
@@ -119,111 +122,198 @@ export function CheckoutForm({ product, userId }: CheckoutFormProps) {
 	}
 
 	return (
-		<div className="mx-auto max-w-md">
-			<Card className="flex flex-col hover:shadow-lg transition-shadow">
-				{product.image && (
-					<div className="relative h-48 w-full overflow-hidden rounded-t-lg">
-						<Image
-							src={product.image}
-							alt={product.name}
-							fill
-							className="object-cover"
-							unoptimized
-						/>
-					</div>
-				)}
-				<CardHeader>
-					<CardTitle className="line-clamp-2">{product.name}</CardTitle>
-					<CardDescription className="line-clamp-2">
-						{product.description || 'No description'}
-					</CardDescription>
-				</CardHeader>
-				<CardContent className="flex-1 space-y-4">
-					<div className="space-y-2">
-						<div className="text-2xl font-bold text-primary">
-							{formatCurrency(product.price)}
-						</div>
-						{product.type !== 'key' && product.type !== 'script' && (
-							<div className="text-sm text-muted-foreground">
-								Stock: {product.stock}
-							</div>
-						)}
-						{product.type === 'key' && product.expireDays && (
-							<div className="text-sm text-muted-foreground">
-								Expires: {product.expireDays === 'Never' ? 'Never' : product.expireDays}
-							</div>
-						)}
-						{product.category && (
-							<div className="text-xs text-muted-foreground">
-								Category: {product.category}
-							</div>
-						)}
-					</div>
+		<div className="mx-auto max-w-6xl px-4 py-8">
+			<div className="mb-8">
+				<h1 className="text-3xl font-bold tracking-tight mb-2">Checkout</h1>
+				<p className="text-muted-foreground">Review your order and proceed to payment</p>
+			</div>
 
-					{product.type !== 'key' && product.type !== 'script' && (
-						<div className="space-y-2">
-							<Label htmlFor="quantity">Quantity</Label>
-							<Input
-								id="quantity"
-								type="number"
-								min="1"
-								max={product.stock}
-								value={quantity}
-								onChange={(e) => setQuantity(parseInt(e.target.value) || 1)}
-							/>
-							<p className="text-xs text-muted-foreground">
-								Available: {product.stock}
-							</p>
-						</div>
-					)}
-
-					{(product.type === 'key' || product.type === 'script') && (
-						<div className="space-y-2 border-t pt-4">
-							<div className="flex justify-between text-sm">
-								<span className="text-muted-foreground">Quantity:</span>
-								<span>{quantity}</span>
-							</div>
-						</div>
-					)}
-
-					<div className="space-y-2 border-t pt-4">
-						<div className="flex justify-between text-sm">
-							<span className="text-muted-foreground">Unit Price:</span>
-							<span>{formatCurrency(product.price)}</span>
-						</div>
-						{quantity > 1 && (
-							<div className="flex justify-between text-sm">
-								<span className="text-muted-foreground">Quantity:</span>
-								<span>{quantity}</span>
+			<div className="grid gap-6 lg:grid-cols-3">
+				{/* Product Information Card */}
+				<div className="lg:col-span-2">
+					<Card className="overflow-hidden">
+						{product.image && (
+							<div className="relative h-64 w-full overflow-hidden bg-muted">
+								<Image
+									src={product.image}
+									alt={product.name}
+									fill
+									className="object-cover transition-transform duration-300 hover:scale-105"
+									unoptimized
+								/>
 							</div>
 						)}
-						<div className="flex justify-between text-lg font-bold border-t pt-2">
-							<span>Total:</span>
-							<span className="text-primary">{formatCurrency(total)}</span>
-						</div>
-					</div>
-				</CardContent>
-				<CardFooter>
-					<Button
-						className="w-full"
-						onClick={handleCheckout}
-						disabled={
-							isLoading ||
-							quantity < 1 ||
-							(product.type !== 'key' && product.type !== 'script' && quantity > product.stock)
-						}
-					>
-						{isLoading ? (
-							<>
-								<Loader2 className="mr-2 h-4 w-4 animate-spin" />
-								Processing...
-							</>
-						) : (
-							'Proceed to Payment'
-						)}
-					</Button>
-				</CardFooter>
-			</Card>
+						<CardHeader className="space-y-4">
+							<div className="flex items-start justify-between gap-4">
+								<CardTitle className="text-2xl leading-tight flex-1">{product.name}</CardTitle>
+								{product.category && (
+									<Badge variant="secondary" className="shrink-0">
+										<Tag className="mr-1 h-3 w-3" />
+										{product.category}
+									</Badge>
+								)}
+							</div>
+							{product.description && (
+								<div className="markdown-content">
+									<ReactMarkdown remarkPlugins={[remarkGfm]}>
+										{product.description}
+									</ReactMarkdown>
+								</div>
+							)}
+						</CardHeader>
+						<CardContent className="space-y-6">
+							{/* Product Details */}
+							<div className="grid gap-4 sm:grid-cols-2">
+								{product.type !== 'key' && product.type !== 'script' && (
+									<div className="flex items-center gap-3 rounded-lg border bg-card p-4">
+										<div className="rounded-full bg-primary/10 p-2">
+											<Package className="h-5 w-5 text-primary" />
+										</div>
+										<div>
+											<p className="text-sm font-medium">Stock Available</p>
+											<p className="text-2xl font-bold text-primary">{product.stock}</p>
+										</div>
+									</div>
+								)}
+								{product.type === 'key' && product.expireDays && (
+									<div className="flex items-center gap-3 rounded-lg border bg-card p-4">
+										<div className="rounded-full bg-primary/10 p-2">
+											<Calendar className="h-5 w-5 text-primary" />
+										</div>
+										<div>
+											<p className="text-sm font-medium">Expiration</p>
+											<p className="text-lg font-semibold">
+												{product.expireDays === 'Never' ? 'Never Expires' : product.expireDays}
+											</p>
+										</div>
+									</div>
+								)}
+								<div className="flex items-center gap-3 rounded-lg border bg-card p-4">
+									<div className="rounded-full bg-primary/10 p-2">
+										<Tag className="h-5 w-5 text-primary" />
+									</div>
+									<div>
+										<p className="text-sm font-medium">Unit Price</p>
+										<p className="text-2xl font-bold text-primary">{formatCurrency(product.price)}</p>
+									</div>
+								</div>
+							</div>
+
+							{/* Quantity Input */}
+							{product.type !== 'key' && product.type !== 'script' && (
+								<div className="space-y-3 rounded-lg border bg-card p-4">
+									<Label htmlFor="quantity" className="text-base font-semibold">
+										Quantity
+									</Label>
+									<div className="flex items-center gap-4">
+										<Button
+											variant="outline"
+											size="icon"
+											onClick={() => setQuantity(Math.max(1, quantity - 1))}
+											disabled={quantity <= 1}
+											className="h-10 w-10 shrink-0"
+										>
+											−
+										</Button>
+										<Input
+											id="quantity"
+											type="number"
+											min="1"
+											max={product.stock}
+											value={quantity}
+											onChange={(e) => {
+												const value = parseInt(e.target.value) || 1
+												setQuantity(Math.min(Math.max(1, value), product.stock))
+											}}
+											className="h-10 text-center text-lg font-semibold"
+										/>
+										<Button
+											variant="outline"
+											size="icon"
+											onClick={() => setQuantity(Math.min(product.stock, quantity + 1))}
+											disabled={quantity >= product.stock}
+											className="h-10 w-10 shrink-0"
+										>
+											+
+										</Button>
+									</div>
+									<p className="text-sm text-muted-foreground">
+										{product.stock} available in stock
+									</p>
+								</div>
+							)}
+						</CardContent>
+					</Card>
+				</div>
+
+				{/* Order Summary Card */}
+				<div className="lg:col-span-1">
+					<Card className="sticky top-8">
+						<CardHeader>
+							<CardTitle className="flex items-center gap-2">
+								<ShoppingCart className="h-5 w-5" />
+								Order Summary
+							</CardTitle>
+						</CardHeader>
+						<CardContent className="space-y-4">
+							<div className="space-y-3">
+								<div className="flex items-center justify-between text-sm">
+									<span className="text-muted-foreground">Product</span>
+									<span className="font-medium">{product.name}</span>
+								</div>
+								<div className="flex items-center justify-between text-sm">
+									<span className="text-muted-foreground">Unit Price</span>
+									<span className="font-medium">{formatCurrency(product.price)}</span>
+								</div>
+								{quantity > 1 && (
+									<div className="flex items-center justify-between text-sm">
+										<span className="text-muted-foreground">Quantity</span>
+										<span className="font-medium">× {quantity}</span>
+									</div>
+								)}
+							</div>
+
+							<div className="border-t pt-4">
+								<div className="flex items-center justify-between">
+									<span className="text-lg font-semibold">Total</span>
+									<span className="text-2xl font-bold text-primary">{formatCurrency(total)}</span>
+								</div>
+							</div>
+
+							<div className="flex items-start gap-2 rounded-lg bg-primary/5 p-3 text-sm">
+								<CheckCircle2 className="h-4 w-4 shrink-0 text-primary mt-0.5" />
+								<p className="text-muted-foreground">
+									Secure payment with PromptPay. Your order will be processed immediately after payment confirmation.
+								</p>
+							</div>
+						</CardContent>
+						<CardFooter className="pt-4">
+							<Button
+								className="w-full h-12 text-base font-semibold"
+								onClick={handleCheckout}
+								disabled={
+									isLoading ||
+									quantity < 1 ||
+									(product.type !== 'key' && product.type !== 'script' && quantity > product.stock)
+								}
+								size="lg"
+							>
+								{isLoading ? (
+									<>
+										<Loader2 className="mr-2 h-5 w-5 animate-spin" />
+										Processing...
+									</>
+								) : (
+									<>
+										Proceed to Payment
+										<ArrowRight className="ml-2 h-5 w-5" />
+									</>
+								)}
+							</Button>
+						</CardFooter>
+					</Card>
+				</div>
+			</div>
 		</div>
 	)
 }

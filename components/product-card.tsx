@@ -2,6 +2,8 @@
 
 import { useState } from 'react'
 import Image from 'next/image'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -138,8 +140,10 @@ export function ProductCard({ product }: ProductCardProps) {
 							/>
 						</div>
 					)}
-					<div className="whitespace-pre-wrap text-sm text-foreground">
-						{product.description}
+					<div className="markdown-content">
+						<ReactMarkdown remarkPlugins={[remarkGfm]}>
+							{product.description}
+						</ReactMarkdown>
 					</div>
 					<div className="mt-4 pt-4 border-t space-y-2">
 						<div className="text-2xl font-bold text-primary">
@@ -187,8 +191,10 @@ export function ProductCard({ product }: ProductCardProps) {
 							{product.description && (
 								<div>
 									<h3 className="text-sm font-semibold mb-2">Description</h3>
-									<div className="whitespace-pre-wrap text-sm text-foreground bg-muted p-3 rounded-md">
-										{product.description}
+									<div className="markdown-content bg-muted p-3 rounded-md">
+										<ReactMarkdown remarkPlugins={[remarkGfm]}>
+											{product.description}
+										</ReactMarkdown>
 									</div>
 								</div>
 							)}
