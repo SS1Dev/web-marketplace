@@ -3,7 +3,7 @@ import { authOptions } from '@/lib/auth'
 import { redirect } from 'next/navigation'
 import { prisma } from '@/lib/prisma'
 import { Navbar } from '@/components/navbar'
-import { ProductGrid } from '@/components/product-grid'
+import { ProductsList } from '@/components/products-page'
 import { StructuredData } from '@/components/seo/structured-data'
 import type { Metadata } from 'next'
 
@@ -83,8 +83,13 @@ export default async function ProductsPage() {
 			<StructuredData data={itemListSchema} />
 			<Navbar />
 			<div className="container mx-auto px-4 py-8">
-				<h1 className="mb-8 text-3xl font-bold">Products</h1>
-				<ProductGrid products={products} />
+				<div className="mb-8">
+					<h1 className="text-3xl font-bold mb-2">Products</h1>
+					<p className="text-muted-foreground">
+						Browse our collection of Roblox scripts, game keys, executor keys, and digital items
+					</p>
+				</div>
+				<ProductsList products={products} />
 			</div>
 		</div>
 	)
